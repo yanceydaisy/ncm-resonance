@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { InMemoryEventQueue } from "../queue.js";
+import type { SqliteEventQueue } from "../queue.js";
 import type { BridgeEvent } from "../types.js";
 
 const DEFAULT_TIMEOUT_SECONDS = 45;
@@ -27,7 +27,7 @@ async function delay(ms: number, signal: AbortSignal): Promise<void> {
 
 export function registerBridgeWaitTool(
   server: McpServer,
-  queue: InMemoryEventQueue,
+  queue: SqliteEventQueue,
   eventFilter: (event: BridgeEvent) => boolean,
 ): void {
   server.registerTool(
@@ -55,6 +55,9 @@ export function registerBridgeWaitTool(
         replyRoute: z.literal("netease.chatroom").optional(),
         replyPolicy: z.enum(["required", "optional"]).optional(),
         createdAt: z.string().optional(),
+        replyMessages: z.array(z.string()).optional(),
+        sentCount: z.number().optional(),
+        deliveryUncertain: z.boolean().optional(),
       },
       annotations: {
         readOnlyHint: false,
@@ -74,23 +77,31 @@ export function registerBridgeWaitTool(
 
         const outstanding = queue.getOutstandingRequiredReplyEvent(eventFilter);
         if (outstanding) {
+          const reply = queue.getReply(outstanding.id);
           return {
             structuredContent: {
               hasEvent: false,
               timedOut: false,
               awaitingReply: true,
               eventId: outstanding.id,
+              visibleText: outstanding.visibleText,
+              modelContext: outstanding.modelContext,
+              replyMessages: reply?.messages,
+              sentCount: reply?.sentCount ?? 0,
+              deliveryUncertain: reply?.sendingIndex !== undefined,
             },
             content: [{
               type: "text",
               text:
                 "Cove Resonance long-wait is paused because a required routed reply is still outstanding. " +
-                "Complete the current cove_bridge_reply before waiting for another event.",
+                "Resume this existing event without injecting another user message. If its reservation is unacknowledged, call cove_bridge_wait_ack first. " +
+                "Reuse replyMessages when present. If deliveryUncertain=true, ask the owner to verify the last bubble before cove_bridge_recover_reply. " +
+                "Complete the current cove_bridge_reply before waiting for another event.\n" + outstanding.modelContext + "\n" + outstanding.visibleText,
             }],
           };
         }
 
-        const event = queue.reserveNext(eventFilter);
+        const event = queue.getReservedEvent(eventFilter) ?? queue.reserveNext(eventFilter);
         if (event) {
           if (extra.signal.aborted) {
             queue.release(event.id);
@@ -179,3 +190,4 @@ export function registerBridgeWaitTool(
     },
   );
 }
+

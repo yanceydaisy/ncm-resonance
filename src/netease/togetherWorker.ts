@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type { BridgeEvent } from "../types.js";
 import { NeteaseApiError, NeteaseClient, type AccountProfile } from "./client.js";
 import { collectContactUserIds, parseLatestInvite } from "./inviteParser.js";
 import { buildFullLyricsModelContext, countAvailableLyricPayloads } from "./lyricsContext.js";
@@ -6,6 +8,7 @@ import {
   NeteaseRealtimeTransport,
   type RealtimeChatRoomMessage,
   type RealtimeChatSendResult,
+  type RealtimeChatSendOptions,
   type RealtimePlaybackEvent,
   type RealtimeTransportStatus,
 } from "./realtimeTransport.js";
@@ -16,7 +19,7 @@ import type {
   TogetherWorkerStatus,
 } from "./types.js";
 
-type EventSink = (source: string, text: string, modelContext?: string) => unknown;
+type EventSink = (source: string, text: string, modelContext?: string, eventId?: string, replyTarget?: BridgeEvent["replyTarget"]) => unknown;
 
 type TogetherWorkerOptions = {
   cookie: string;
@@ -75,6 +78,10 @@ export class TogetherWorker {
   private readonly handledInvites = new Set<string>();
   private readonly handledChatMessageKeys = new Set<string>();
   private running = false;
+  private lifecycleGeneration = 0;
+  private runPromise: Promise<void> | null = null;
+  private pollSleepTimer: ReturnType<typeof setTimeout> | null = null;
+  private pollSleepResolve: (() => void) | null = null;
   private roomId: string | null = null;
   private chatRoomId: string | null = null;
   private previousSongId: string | null = null;
@@ -108,7 +115,7 @@ export class TogetherWorker {
     );
     this.status = {
       enabled: options.enabled,
-      phase: options.enabled ? "starting" : "disabled",
+      phase: options.enabled ? "stopped" : "disabled",
       accountId: null,
       roomId: null,
       currentSong: null,
@@ -127,8 +134,8 @@ export class TogetherWorker {
     return this.realtime.getStatus();
   }
 
-  async sendChatRoomText(text: string): Promise<RealtimeChatSendResult> {
-    return await this.realtime.sendChatRoomText(text);
+  async sendChatRoomText(text: string, options: RealtimeChatSendOptions = {}): Promise<RealtimeChatSendResult> {
+    return await this.realtime.sendChatRoomText(text, options);
   }
 
   async leaveTogether(): Promise<{
@@ -319,32 +326,116 @@ export class TogetherWorker {
   }
 
   start(): void {
-    if (this.running || !this.options.enabled) return;
+    if (this.running || this.runPromise || !this.options.enabled) return;
     this.running = true;
-    void this.run();
+    const generation = ++this.lifecycleGeneration;
+    this.status.phase = "starting";
+    const task = this.run(generation).catch((error) => {
+      if (this.isLifecycleCurrent(generation)) {
+        this.recordError(error, "Together worker crashed");
+      }
+    });
+    this.runPromise = task;
+    void task.finally(() => {
+      if (this.runPromise === task) {
+        this.runPromise = null;
+        this.running = false;
+      }
+    });
   }
 
-  private async run(): Promise<void> {
+  async stop(): Promise<void> {
+    if (!this.options.enabled) {
+      this.status.phase = "disabled";
+      return;
+    }
+    if (!this.running && !this.runPromise) {
+      this.status.phase = "stopped";
+      return;
+    }
+
+    this.running = false;
+    this.lifecycleGeneration += 1;
+    this.interruptPollSleep();
+    this.rejectPendingPlaybackControl("NetEase Together worker stopped before playback control confirmation.");
+    this.leaveRoom("", false);
+    await this.realtime.disconnect();
+
+    const task = this.runPromise;
+    if (task) await task;
+
+    this.status.phase = "stopped";
+  }
+
+  async shutdown(): Promise<void> {
+    this.running = false;
+    this.lifecycleGeneration += 1;
+    this.interruptPollSleep();
+    this.rejectPendingPlaybackControl("NetEase Together worker stopped before shutdown.");
+    this.leaveRoom("", false);
+    await this.realtime.shutdown();
+
+    const task = this.runPromise;
+    if (task) await task;
+
+    this.status.phase = "stopped";
+  }
+
+  private isLifecycleCurrent(generation?: number): boolean {
+    return generation === undefined
+      || (this.running && generation === this.lifecycleGeneration);
+  }
+
+  private interruptPollSleep(): void {
+    this.pollSleepResolve?.();
+  }
+
+  private async waitForNextPoll(ms: number): Promise<void> {
+    if (!this.running || ms <= 0) return;
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (this.pollSleepTimer) clearTimeout(this.pollSleepTimer);
+        this.pollSleepTimer = null;
+        if (this.pollSleepResolve === finish) this.pollSleepResolve = null;
+        resolve();
+      };
+      this.pollSleepResolve = finish;
+      this.pollSleepTimer = setTimeout(finish, ms);
+      if (!this.running) finish();
+    });
+  }
+
+  private async run(generation: number): Promise<void> {
     try {
-      this.accountProfile = await this.client.getAccountProfile();
-      this.status.accountId = this.accountProfile.id;
+      const profile = await this.client.getAccountProfile();
+      if (!this.isLifecycleCurrent(generation)) return;
+      this.accountProfile = profile;
+      this.status.accountId = profile.id;
       this.status.phase = "waiting_invite";
       console.log(`NetEase Together worker ready for account ${this.status.accountId}`);
     } catch (error) {
+      if (!this.isLifecycleCurrent(generation)) return;
       this.recordError(error, "Cookie validation failed");
     }
 
-    while (this.running) {
+    while (this.isLifecycleCurrent(generation)) {
       const startedAt = Date.now();
       try {
         if (!this.status.accountId) {
-          this.accountProfile = await this.client.getAccountProfile();
-          this.status.accountId = this.accountProfile.id;
+          const profile = await this.client.getAccountProfile();
+          if (!this.isLifecycleCurrent(generation)) return;
+          this.accountProfile = profile;
+          this.status.accountId = profile.id;
         }
-        await this.pollOnce();
+        await this.pollOnce(generation);
+        if (!this.isLifecycleCurrent(generation)) return;
         this.errorStreak = 0;
         this.status.lastError = null;
       } catch (error) {
+        if (!this.isLifecycleCurrent(generation)) return;
         if (error instanceof NeteaseApiError && error.code === 488) {
           this.leaveRoom("房间已经结束了。一起听已退出，继续等待下一次邀请。");
         } else {
@@ -356,13 +447,15 @@ export class TogetherWorker {
       const backoff = this.errorStreak > 0
         ? Math.min(60_000, base * 2 ** Math.min(this.errorStreak, 4))
         : base;
-      await sleep(Math.max(250, backoff - (Date.now() - startedAt)));
+      await this.waitForNextPoll(Math.max(250, backoff - (Date.now() - startedAt)));
     }
   }
 
-  private async pollOnce(): Promise<void> {
+  private async pollOnce(generation?: number): Promise<void> {
+    if (!this.isLifecycleCurrent(generation)) return;
     this.status.lastPollAt = new Date().toISOString();
     const remote = await this.client.getRoomStatus();
+    if (!this.isLifecycleCurrent(generation)) return;
 
     if (remote.inRoom && remote.roomId) {
       if (this.roomId !== remote.roomId) {
@@ -370,19 +463,23 @@ export class TogetherWorker {
       } else if (remote.chatRoomId && remote.chatRoomId !== this.chatRoomId) {
         this.chatRoomId = remote.chatRoomId;
       }
-      if (remote.chatRoomId) await this.ensureRealtime(remote.roomId, remote.chatRoomId);
+      if (remote.chatRoomId) {
+        await this.ensureRealtime(remote.roomId, remote.chatRoomId, generation);
+        if (!this.isLifecycleCurrent(generation)) return;
+      }
     } else if (this.roomId) {
       this.leaveRoom("一起听已经结束了。我会继续等你的下一次邀请。");
     }
 
     if (!this.roomId) {
       this.status.phase = "waiting_invite";
-      const invite = await this.findInvite();
-      if (!invite) return;
-      await this.acceptInvite(invite);
+      const invite = await this.findInvite(generation);
+      if (!this.isLifecycleCurrent(generation) || !invite) return;
+      await this.acceptInvite(invite, generation);
+      if (!this.isLifecycleCurrent(generation)) return;
     }
 
-    if (!this.roomId) return;
+    if (!this.roomId || !this.isLifecycleCurrent(generation)) return;
     this.status.phase = "listening";
 
     const now = Date.now();
@@ -390,16 +487,22 @@ export class TogetherWorker {
     let playbackHandling = Promise.resolve();
     if (this.shouldReconcilePlayback(now, realtimeConnected)) {
       const playing = await this.client.getPlaying(this.roomId);
+      if (!this.isLifecycleCurrent(generation)) return;
       const observedAtMs = Date.now();
       this.lastPlaybackReconcileAt = observedAtMs;
-      playbackHandling = this.applyPlayback(playing, observedAtMs, "http");
+      playbackHandling = this.applyPlayback(playing, observedAtMs, "http", generation);
     }
 
-    await this.maybeHeartbeat();
+    await this.maybeHeartbeat(generation);
+    if (!this.isLifecycleCurrent(generation)) return;
     await playbackHandling;
   }
 
-  private async ensureRealtime(roomId: string, chatRoomId: string): Promise<void> {
+  private async ensureRealtime(
+    roomId: string,
+    chatRoomId: string,
+    generation?: number,
+  ): Promise<void> {
     const realtimeStatus = this.realtime.getStatus();
     if (
       realtimeStatus.connected
@@ -413,12 +516,15 @@ export class TogetherWorker {
 
     try {
       const credentials = await this.client.getRealtimeCredentials();
+      if (!this.isLifecycleCurrent(generation)) return;
       console.log(
         `NetEase NIM realtime credentials acquired for account ${this.status.accountId ?? "unknown"}; addresses=${credentials.addresses.length}`,
       );
       if (!this.accountProfile) {
-        this.accountProfile = await this.client.getAccountProfile();
-        this.status.accountId = this.accountProfile.id;
+        const profile = await this.client.getAccountProfile();
+        if (!this.isLifecycleCurrent(generation)) return;
+        this.accountProfile = profile;
+        this.status.accountId = profile.id;
       }
       await this.realtime.connect({
         roomId,
@@ -431,15 +537,20 @@ export class TogetherWorker {
           ...(this.accountProfile.gender !== null ? { gender: this.accountProfile.gender } : {}),
         },
       });
+      if (!this.isLifecycleCurrent(generation)) {
+        await this.realtime.disconnect();
+        return;
+      }
       console.log(`NetEase NIM realtime connected: roomId=${roomId} chatRoomId=${chatRoomId}`);
     } catch (error) {
+      if (!this.isLifecycleCurrent(generation)) return;
       this.realtime.recordConnectionError(error);
       const detail = error instanceof Error ? error.message : "unknown error";
       console.error(`NetEase NIM realtime connect failed: ${detail}`);
     }
   }
 
-  private async findInvite(): Promise<TogetherInvite | null> {
+  private async findInvite(generation?: number): Promise<TogetherInvite | null> {
     const ownId = this.status.accountId;
     if (!ownId) return null;
     let contactIds: string[];
@@ -448,18 +559,21 @@ export class TogetherWorker {
       contactIds = [this.options.inviterUid];
     } else {
       const contacts = await this.client.getRecentContacts();
+      if (!this.isLifecycleCurrent(generation)) return null;
       contactIds = collectContactUserIds(contacts, ownId);
     }
 
     for (const uid of contactIds) {
+      if (!this.isLifecycleCurrent(generation)) return null;
       const history = await this.client.getPrivateHistory(uid);
+      if (!this.isLifecycleCurrent(generation)) return null;
       const invite = parseLatestInvite(history, uid);
       if (invite && !this.handledInvites.has(invite.roomId)) return invite;
     }
     return null;
   }
 
-  private async acceptInvite(invite: TogetherInvite): Promise<void> {
+  private async acceptInvite(invite: TogetherInvite, generation?: number): Promise<void> {
     this.status.phase = "joining";
     this.handledInvites.add(invite.roomId);
     if (this.handledInvites.size > 50) {
@@ -468,12 +582,17 @@ export class TogetherWorker {
     }
     try {
       const accepted = await this.client.acceptInvite(invite.roomId, invite.inviterId);
+      if (!this.isLifecycleCurrent(generation)) {
+        this.handledInvites.delete(invite.roomId);
+        return;
+      }
       this.enterRoom(accepted.roomId ?? invite.roomId, accepted.chatRoomId);
       if (accepted.roomId && accepted.chatRoomId) {
-        await this.ensureRealtime(accepted.roomId, accepted.chatRoomId);
+        await this.ensureRealtime(accepted.roomId, accepted.chatRoomId, generation);
       }
     } catch (error) {
       this.handledInvites.delete(invite.roomId);
+      if (!this.isLifecycleCurrent(generation)) return;
       throw error;
     }
   }
@@ -504,8 +623,20 @@ export class TogetherWorker {
     this.updateState((sink) => sink.enterRoom(roomId));
   }
 
-  private leaveRoom(message: string): void {
+  private emitEvent(
+    source: string,
+    text: string,
+    modelContext?: string,
+    eventId?: string,
+    replyTarget = this.roomId && this.chatRoomId
+      ? { roomId: this.roomId, chatRoomId: this.chatRoomId } : undefined,
+  ): void {
+    this.options.onEvent(source, text, modelContext, eventId, replyTarget);
+  }
+
+  private leaveRoom(message: string, emitEvent = true): void {
     const wasInRoom = Boolean(this.roomId);
+    const route = this.roomId && this.chatRoomId ? { roomId: this.roomId, chatRoomId: this.chatRoomId } : undefined;
     this.rejectPendingPlaybackControl("NetEase Listen Together ended before playback control confirmation.");
     this.roomId = null;
     this.chatRoomId = null;
@@ -525,7 +656,7 @@ export class TogetherWorker {
     this.status.phase = "waiting_invite";
     void this.realtime.disconnect();
     this.updateState((sink) => sink.leaveRoom());
-    if (wasInRoom) this.options.onEvent("netease.together", message);
+    if (wasInRoom && emitEvent) this.emitEvent("netease.together", message, undefined, undefined, route);
   }
 
   private currentPlaybackProgressMs(nowMs = Date.now()): number {
@@ -679,9 +810,10 @@ export class TogetherWorker {
     return nowMs - this.lastPlaybackReconcileAt >= interval;
   }
 
-  private async maybeHeartbeat(): Promise<void> {
+  private async maybeHeartbeat(generation?: number): Promise<void> {
     const playing = this.latestPlaying;
-    if (!this.roomId || !playing) return;
+    const roomId = this.roomId;
+    if (!roomId || !playing || !this.isLifecycleCurrent(generation)) return;
 
     const interval = this.options.heartbeatIntervalMs ?? 10_000;
     const nowMs = Date.now();
@@ -689,11 +821,12 @@ export class TogetherWorker {
 
     const progressMs = this.currentPlaybackProgressMs(nowMs);
     await this.client.sendHeartbeat(
-      this.roomId,
+      roomId,
       playing.songId,
       playing.playStatus === "PLAY",
       progressMs,
     );
+    if (!this.isLifecycleCurrent(generation)) return;
     this.lastHeartbeatAt = Date.now();
     this.status.lastHeartbeatAt = new Date(this.lastHeartbeatAt).toISOString();
   }
@@ -702,7 +835,9 @@ export class TogetherWorker {
     playing: PlayingState,
     observedAtMs: number,
     origin: "http" | "realtime",
+    generation?: number,
   ): Promise<void> {
+    if (!this.isLifecycleCurrent(generation)) return Promise.resolve();
     const serverSeq = playing.serverSeq;
     if (
       serverSeq !== undefined
@@ -727,7 +862,7 @@ export class TogetherWorker {
       ...(serverSeq === undefined ? {} : { serverSeq }),
     }));
 
-    const handling = this.playbackHandlingTail.then(() => this.handlePlaying(playing));
+    const handling = this.playbackHandlingTail.then(() => this.handlePlaying(playing, generation));
     this.playbackHandlingTail = handling.catch(() => {});
     return handling;
   }
@@ -747,7 +882,7 @@ export class TogetherWorker {
       ...(event.serverSeq === null ? {} : { serverSeq: event.serverSeq }),
     };
 
-    void this.applyPlayback(playing, event.receivedAtMs, "realtime")
+    void this.applyPlayback(playing, event.receivedAtMs, "realtime", this.running ? this.lifecycleGeneration : undefined)
       .then(() => {
         this.confirmPendingPlaybackControl(event);
       })
@@ -759,23 +894,29 @@ export class TogetherWorker {
       });
   }
 
-  private async handlePlaying(playing: PlayingState): Promise<void> {
+  private async handlePlaying(
+    playing: PlayingState,
+    generation?: number,
+  ): Promise<void> {
+    if (!this.isLifecycleCurrent(generation)) return;
     this.status.playStatus = playing.playStatus;
     const statusChanged = this.previousPlayStatus !== playing.playStatus;
 
     if (playing.songId && playing.songId !== this.previousSongId) {
       const song = await this.client.getSongDetails(playing.songId);
+      if (!this.isLifecycleCurrent(generation)) return;
       this.previousSongId = playing.songId;
       this.currentLyricsModelContext = null;
       this.status.currentSong = song;
       this.updateState((sink) => sink.updateSong(song));
-      const lyricsContext = await this.loadLyrics(song);
+      const lyricsContext = await this.loadLyrics(song, generation);
+      if (!this.isLifecycleCurrent(generation)) return;
 
-      if (playing.playStatus === "PLAY") {
-        const prefix = this.joinedPending
+      if (playing.playStatus === "PLAY" || playing.playStatus === "PAUSE") {
+        const prefix = playing.playStatus === "PAUSE" ? "一起听已切歌，目前暂停在" : this.joinedPending
           ? "你把我拉进一起听啦。现在播放"
           : "你换到了";
-        this.options.onEvent(
+        this.emitEvent(
           "netease.music_changed",
           `${prefix}《${song.name}》— ${song.artist}。请结合我们的对话自然回应；如果没必要点评，也可以只安静陪听。`,
           lyricsContext,
@@ -784,14 +925,14 @@ export class TogetherWorker {
       }
     } else if (statusChanged && this.previousPlayStatus !== "UNKNOWN") {
       if (playing.playStatus === "PAUSE") {
-        this.options.onEvent(
+        this.emitEvent(
           "netease.playback",
           "一起听暂停了。",
           this.currentLyricsModelContext ?? undefined,
         );
       } else if (playing.playStatus === "PLAY") {
         const song = this.status.currentSong;
-        this.options.onEvent(
+        this.emitEvent(
           "netease.playback",
           song
             ? `一起听继续播放：《${song.name}》— ${song.artist}。`
@@ -819,23 +960,28 @@ export class TogetherWorker {
       console.warn("NetEase duplicate ChatRoom message suppressed: messageId=" + suffix);
       return;
     }
+    this.emitEvent(
+      "netease.chatroom",
+      message.text,
+      this.currentLyricsModelContext ?? undefined,
+      "netease-chat:" + createHash("sha256").update((ownAccountId ?? "") + "\0" + messageKey).digest("hex"),
+      this.roomId && this.chatRoomId ? { roomId: this.roomId, chatRoomId: this.chatRoomId } : undefined,
+    );
     this.handledChatMessageKeys.add(messageKey);
     while (this.handledChatMessageKeys.size > 512) {
       const oldest = this.handledChatMessageKeys.values().next().value;
       if (!oldest) break;
       this.handledChatMessageKeys.delete(oldest);
     }
-
-    this.options.onEvent(
-      "netease.chatroom",
-      message.text,
-      this.currentLyricsModelContext ?? undefined,
-    );
   }
 
-  private async loadLyrics(song: SongDetails): Promise<string | undefined> {
+  private async loadLyrics(
+    song: SongDetails,
+    generation?: number,
+  ): Promise<string | undefined> {
     try {
       const lyrics = await this.client.getLyrics(song.id);
+      if (!this.isLifecycleCurrent(generation)) return undefined;
       this.updateState((sink) => sink.updateLyrics(song.id, lyrics));
       const modelContext = buildFullLyricsModelContext(song, lyrics);
       this.currentLyricsModelContext = modelContext;
@@ -846,6 +992,7 @@ export class TogetherWorker {
       }
       return modelContext ?? undefined;
     } catch (error) {
+      if (!this.isLifecycleCurrent(generation)) return undefined;
       this.currentLyricsModelContext = null;
       const detail = error instanceof NeteaseApiError
         ? `${error.operation}${error.code === null ? "" : ` code=${error.code}`}`
@@ -906,3 +1053,4 @@ export function createTogetherWorker(
     stateSink,
   });
 }
+

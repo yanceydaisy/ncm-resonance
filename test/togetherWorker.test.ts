@@ -1066,3 +1066,60 @@ test("leaveTogether is a confirmed no-op when authoritative status is already ou
   assert.equal(result.roomId, null);
   assert.equal(worker.getStatus().phase, "waiting_invite");
 });
+
+
+test("provider message IDs produce the same durable event identity after worker replacement", () => {
+  const ids: string[] = [];
+  const targets: unknown[] = [];
+  const message: RealtimeChatRoomMessage = {
+    type: "chatroom_message", category: "text", msgType: 0, senderId: "peer", senderNick: "peer",
+    text: "same message", messageId: "persistent-id", timetagMs: 1234, receivedAtMs: 1234,
+  };
+  for (let index = 0; index < 2; index += 1) {
+    const worker = new TogetherWorker({ cookie: "", enabled: false, onEvent: (_source, _text, _context, id, target) => {
+      ids.push(id!); targets.push(target);
+    } });
+    const internal = worker as unknown as { enterRoom(room: string, chat: string): void; handleRealtimeChatMessage(message: RealtimeChatRoomMessage): void };
+    internal.enterRoom("original-room", "123");
+    internal.handleRealtimeChatMessage({ ...message, receivedAtMs: 1234 + index });
+  }
+  assert.equal(ids[0], ids[1]);
+  assert.match(ids[0], /^netease-chat:[a-f0-9]{64}$/);
+  assert.deepEqual(targets, [{ roomId: "original-room", chatRoomId: "123" }, { roomId: "original-room", chatRoomId: "123" }]);
+});
+
+test("an ingress persistence failure leaves the message eligible for retry", () => {
+  let attempts = 0;
+  const worker = new TogetherWorker({ cookie: "", enabled: false, onEvent: () => {
+    attempts += 1;
+    if (attempts === 1) throw new Error("database temporarily unavailable");
+  } });
+  const internal = worker as unknown as { handleRealtimeChatMessage(message: RealtimeChatRoomMessage): void };
+  const message: RealtimeChatRoomMessage = {
+    type: "chatroom_message", category: "text", msgType: 0, senderId: "peer", senderNick: null,
+    text: "retry", messageId: "retry-id", timetagMs: 1, receivedAtMs: 1,
+  };
+  assert.throws(() => internal.handleRealtimeChatMessage(message), /database/);
+  internal.handleRealtimeChatMessage(message);
+  internal.handleRealtimeChatMessage(message);
+  assert.equal(attempts, 2);
+});
+
+test("stopping during account lookup prevents the old run from joining or polling", async () => {
+  const worker = new TogetherWorker({ cookie: "", enabled: true, onEvent: () => {} });
+  const internal = worker as unknown as {
+    client: { getAccountProfile(): Promise<{ id: string; nickname: null; avatarUrl: null; gender: null }> };
+    pollOnce(): Promise<void>;
+  };
+  let finish!: (profile: { id: string; nickname: null; avatarUrl: null; gender: null }) => void;
+  internal.client.getAccountProfile = () => new Promise(resolve => { finish = resolve; });
+  let polls = 0;
+  internal.pollOnce = async () => { polls += 1; };
+  worker.start();
+  const stopped = worker.stop();
+  finish({ id: "stale-account", nickname: null, avatarUrl: null, gender: null });
+  await stopped;
+  assert.equal(worker.getStatus().phase, "stopped");
+  assert.equal(worker.getStatus().accountId, null);
+  assert.equal(polls, 0);
+});

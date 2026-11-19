@@ -80,7 +80,7 @@ Worker 负责网易云「一起听」侧：
 
 ```text
 Ubuntu 22.04
-Node.js 22.x
+Node.js 22.16 或更新的 22.x
 npm
 2 vCPU / 2 GB RAM 起步
 ```
@@ -127,6 +127,7 @@ chmod 600 .env
 
 ```dotenv
 PORT=8787
+BRIDGE_DB_PATH=./data/bridge.sqlite
 BRIDGE_PUBLIC_ORIGIN=https://bridge.example.com
 
 TOGETHER_ENABLED=true
@@ -634,11 +635,9 @@ NetEase NIM realtime connected
 
 ### 服务重启后队列不见了
 
-这是当前已知限制。
+0.3.0 默认使用 SQLite 保存队列。请检查 `BRIDGE_DB_PATH` 指向同一份数据库，并确认 Docker 数据目录已经挂载。
 
-目前 Conversation / State queue 仍在内存里，进程重启后未完成事件不会保留。
-
-SQLite 持久化已经在 roadmap 中。
+恢复流程、逐气泡回执与备份步骤见 [持久化说明](PERSISTENCE.zh-CN.md)。
 
 ---
 
@@ -646,11 +645,10 @@ SQLite 持久化已经在 roadmap 中。
 
 推荐顺序：
 
-1. SQLite 持久化 Conversation / reply route；
-2. Listener watchdog / 自动恢复；
-3. 更清晰的 multi-listener 语义；
-4. 单机一体化 VPS 部署；
-5. 更通用的外部入口适配器。
+1. Listener watchdog / 自动恢复；
+2. 更清晰的 multi-listener 语义；
+3. 单机一体化 VPS 部署；
+4. 更通用的外部入口适配器。
 
 Bridge 的核心不应该绑定死在网易云。
 
@@ -687,3 +685,4 @@ Health
 ```
 
 每一层单独验收，再往下一层叠。
+

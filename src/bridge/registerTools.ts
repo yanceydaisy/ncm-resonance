@@ -3,13 +3,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { listenerWakeHub } from "../listenerWake.js";
 import type { TogetherWorker } from "../netease/togetherWorker.js";
-import type { InMemoryEventQueue } from "../queue.js";
+import { isDefinitiveChatSendFailure } from "../netease/realtimeTransport.js";
+import type { SqliteEventQueue } from "../queue.js";
 import { normalizeReplyBubbles } from "../replyBubbles.js";
 import type { BridgeEvent } from "../types.js";
 
 export function registerBridgeTools(
   server: McpServer,
-  queue: InMemoryEventQueue,
+  queue: SqliteEventQueue,
   eventFilter: (event: BridgeEvent) => boolean,
   togetherWorker: TogetherWorker,
 ): void {
@@ -63,7 +64,7 @@ export function registerBridgeTools(
       const fingerprint = createHash("sha256")
         .update(JSON.stringify({ eventId: resolvedEventId, route: event.replyRoute, messages: normalized }))
         .digest("hex");
-      const claim = queue.claimReply(resolvedEventId, fingerprint);
+      const claim = queue.claimReply(resolvedEventId, fingerprint, normalized);
 
       if (claim.state === "already_completed" || claim.state === "in_progress") {
         return {
@@ -87,8 +88,12 @@ export function registerBridgeTools(
       try {
         let sentCount = claim.sentCount;
         for (let index = sentCount; index < normalized.length; index += 1) {
-          await togetherWorker.sendChatRoomText(normalized[index]);
-          sentCount = queue.markReplyMessageSent(resolvedEventId, fingerprint);
+          queue.markReplySending(resolvedEventId, fingerprint);
+          const receipt = await togetherWorker.sendChatRoomText(normalized[index], {
+            ...event.replyTarget,
+            messageId: createHash("sha256").update(fingerprint + ":" + index).digest("hex"),
+          });
+          sentCount = queue.markReplyMessageSent(resolvedEventId, fingerprint, receipt);
           if (index < normalized.length - 1) {
             await new Promise<void>((resolve) => setTimeout(resolve, 350));
           }
@@ -113,9 +118,27 @@ export function registerBridgeTools(
           }],
         };
       } catch (error) {
-        queue.releaseReply(resolvedEventId, fingerprint);
+        queue.releaseReply(resolvedEventId, fingerprint, isDefinitiveChatSendFailure(error));
         throw error;
       }
+    },
+  );
+
+  server.registerTool(
+    "cove_bridge_recover_reply",
+    {
+      title: "Resolve an uncertain reply receipt",
+      description: "Resolve the last bubble of an interrupted routed reply only after the owner explicitly verifies in the destination app whether that bubble arrived. Never guess or call automatically. This records the owner's verification without sending a message. Resume using cove_bridge_reply with the returned saved messages.",
+      inputSchema: { eventId: z.string().min(1), lastBubbleDelivered: z.boolean() },
+      outputSchema: { eventId: z.string(), sentCount: z.number(), messages: z.array(z.string()) },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false },
+    },
+    async ({ eventId, lastBubbleDelivered }) => {
+      const event = queue.getEvent(eventId);
+      if (!event || !eventFilter(event)) throw new Error(`Unknown event: ${eventId}`);
+      const reply = queue.recoverReply(eventId, lastBubbleDelivered);
+      const result = { eventId, sentCount: reply.sentCount, messages: reply.messages ?? [] };
+      return { structuredContent: result, content: [{ type: "text" as const, text: JSON.stringify(result) }] };
     },
   );
 
@@ -140,7 +163,7 @@ export function registerBridgeTools(
     },
     async () => {
       const outstanding = queue.getOutstandingRequiredReplyEvent(eventFilter);
-      if (outstanding) {
+      if (outstanding && !queue.isReserved(outstanding.id)) {
         return {
           structuredContent: {
             hasEvent: false,
@@ -151,7 +174,7 @@ export function registerBridgeTools(
         };
       }
 
-      const event = queue.reserveNext(eventFilter);
+      const event = outstanding ?? queue.getReservedEvent(eventFilter) ?? queue.reserveNext(eventFilter);
       if (!event) return { structuredContent: { hasEvent: false }, content: [] };
       console.log(
         `Cove Bridge event reserved: eventId=${event.id} stream=${event.stream} source=${event.source} replyPolicy=${event.replyPolicy ?? "none"}`,
@@ -229,3 +252,4 @@ export function registerBridgeTools(
     },
   );
 }
+

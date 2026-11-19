@@ -1,238 +1,278 @@
-import type { BridgeEvent, StoredBridgeEvent } from "./types.js";
+import { randomUUID } from "node:crypto";
+import { chmodSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import type { BridgeEvent, ReplyDeliveryState, StoredBridgeEvent } from "./types.js";
 
 export type ReplyClaim =
   | { state: "send"; sentCount: number }
   | { state: "in_progress"; sentCount: number }
   | { state: "already_completed"; sentCount: number };
 
-type StreamCounts = {
-  pending: number;
-  reserved: number;
-  delivered: number;
-  total: number;
-};
-
-export type QueueStatus = StreamCounts & {
-  conversation: StreamCounts;
-  state: StreamCounts;
-};
-
+type StreamCounts = { pending: number; reserved: number; delivered: number; total: number };
+export type QueueStatus = StreamCounts & { conversation: StreamCounts; state: StreamCounts };
+type StoredRow = { event: string; status: StoredBridgeEvent["status"]; reply: string | null };
+const PROCESS_OWNER = randomUUID();
 const STATE_HISTORY_PER_KEY = 12;
+const emptyCounts = (): StreamCounts => ({ pending: 0, reserved: 0, delivered: 0, total: 0 });
 
-function emptyCounts(): StreamCounts {
-  return { pending: 0, reserved: 0, delivered: 0, total: 0 };
-}
+export class SqliteEventQueue {
+  private readonly db: DatabaseSync;
 
-export class InMemoryEventQueue {
-  private readonly conversationRows = new Map<string, StoredBridgeEvent>();
-  private readonly stateRows = new Map<string, StoredBridgeEvent>();
-  private readonly statePendingByKey = new Map<string, string>();
-
-  enqueue(event: BridgeEvent): boolean {
-    if (this.getRow(event.id)) return false;
-
-    if (event.stream === "state") {
-      const key = event.stateKey ?? event.source;
-      const previousPendingId = this.statePendingByKey.get(key);
-      if (previousPendingId) {
-        const previous = this.stateRows.get(previousPendingId);
-        if (previous?.status === "pending") this.stateRows.delete(previousPendingId);
-      }
-
-      this.stateRows.set(event.id, { event, status: "pending" });
-      this.statePendingByKey.delete(key);
-      this.statePendingByKey.set(key, event.id);
-      this.pruneStateHistory(key);
-      return true;
-    }
-
-    this.conversationRows.set(event.id, { event, status: "pending" });
-    return true;
+  constructor(path: string) {
+    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    this.db = new DatabaseSync(path);
+    if (path !== ":memory:") chmodSync(path, 0o600);
+    this.db.exec(`
+      PRAGMA busy_timeout=5000;
+      PRAGMA journal_mode=WAL;
+      PRAGMA synchronous=FULL;
+      CREATE TABLE IF NOT EXISTS bridge_events (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT NOT NULL UNIQUE,
+        event TEXT NOT NULL,
+        stream TEXT NOT NULL,
+        state_key TEXT,
+        status TEXT NOT NULL CHECK(status IN ('pending','reserved','delivered')),
+        reply TEXT
+      );
+      CREATE INDEX IF NOT EXISTS bridge_pending ON bridge_events(stream,status,sequence);
+      CREATE INDEX IF NOT EXISTS bridge_state ON bridge_events(state_key,sequence);
+    `);
   }
 
-  getEvent(eventId: string): BridgeEvent | null {
-    return this.getRow(eventId)?.event ?? null;
+  close(): void { this.db.close(); }
+
+  private transaction<T>(operation: () => T): T {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = operation();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  private row(eventId: string): StoredBridgeEvent | undefined {
+    const row = this.db.prepare("SELECT event,status,reply FROM bridge_events WHERE id=?").get(eventId) as StoredRow | undefined;
+    if (!row) return undefined;
+    return { event: JSON.parse(row.event), status: row.status, ...(row.reply ? { reply: JSON.parse(row.reply) } : {}) };
+  }
+
+  private saveReply(eventId: string, reply: ReplyDeliveryState): void {
+    this.db.prepare("UPDATE bridge_events SET reply=? WHERE id=?").run(JSON.stringify(reply), eventId);
+  }
+
+  enqueue(event: BridgeEvent): boolean {
+    return this.transaction(() => {
+      if (this.row(event.id)) return false;
+      const key = event.stateKey ?? event.source;
+      if (event.stream === "state") {
+        this.db.prepare("DELETE FROM bridge_events WHERE stream='state' AND state_key=? AND status='pending'").run(key);
+      }
+      this.db.prepare("INSERT INTO bridge_events(id,event,stream,state_key,status) VALUES(?,?,?,?,'pending')")
+        .run(event.id, JSON.stringify(event), event.stream, event.stream === "state" ? key : null);
+      if (event.stream === "state") {
+        this.db.prepare(`DELETE FROM bridge_events WHERE id IN (
+          SELECT id FROM bridge_events WHERE stream='state' AND state_key=? AND status='delivered'
+          AND (reply IS NULL OR json_extract(reply,'$.completed')=1)
+          ORDER BY sequence DESC LIMIT -1 OFFSET ?
+        )`).run(key, STATE_HISTORY_PER_KEY);
+      }
+      return true;
+    });
+  }
+
+  getEvent(eventId: string): BridgeEvent | null { return this.row(eventId)?.event ?? null; }
+  isReserved(eventId: string): boolean { return this.row(eventId)?.status === "reserved"; }
+  getReply(eventId: string): ReplyDeliveryState | undefined { return this.row(eventId)?.reply; }
+
+  getReservedEvent(filter?: (event: BridgeEvent) => boolean): BridgeEvent | null {
+    const rows = this.db.prepare(`SELECT event FROM bridge_events AS reserved WHERE status='reserved'
+      AND (stream='conversation' OR NOT EXISTS (
+        SELECT 1 FROM bridge_events AS newer WHERE newer.state_key=reserved.state_key
+        AND newer.stream='state' AND newer.sequence>reserved.sequence
+      )) ORDER BY CASE stream WHEN 'conversation' THEN 0 ELSE 1 END, sequence`).all();
+    for (const row of rows) {
+      const event: BridgeEvent = JSON.parse(String(row.event));
+      if (!filter || filter(event)) return event;
+    }
+    return null;
   }
 
   getOutstandingRequiredReplyEvent(filter?: (event: BridgeEvent) => boolean): BridgeEvent | null {
-    for (const row of this.conversationRows.values()) {
-      if (filter && !filter(row.event)) continue;
-      if (row.event.replyPolicy !== "required") continue;
-      if (row.reply?.completed) continue;
-      if (row.status === "reserved" || row.status === "delivered") return row.event;
+    const rows = this.db.prepare(`SELECT event FROM bridge_events WHERE stream='conversation'
+      AND status IN ('reserved','delivered') AND json_extract(event,'$.replyPolicy')='required'
+      AND (reply IS NULL OR json_extract(reply,'$.completed')=0) ORDER BY sequence`).all();
+    for (const row of rows) {
+      const event: BridgeEvent = JSON.parse(String(row.event));
+      if (!filter || filter(event)) return event;
     }
     return null;
   }
 
   reserveNext(filter?: (event: BridgeEvent) => boolean): BridgeEvent | null {
-    if (this.getOutstandingRequiredReplyEvent(filter)) return null;
-
-    for (const row of this.conversationRows.values()) {
-      if (row.status !== "pending") continue;
-      if (filter && !filter(row.event)) continue;
-      row.status = "reserved";
-      return row.event;
-    }
-
-    for (const [key, eventId] of this.statePendingByKey) {
-      const row = this.stateRows.get(eventId);
-      if (!row || row.status !== "pending") {
-        this.statePendingByKey.delete(key);
-        continue;
+    return this.transaction(() => {
+      if (this.getOutstandingRequiredReplyEvent(filter)) return null;
+      const rows = this.db.prepare(`SELECT event FROM bridge_events WHERE status='pending'
+        ORDER BY CASE stream WHEN 'conversation' THEN 0 ELSE 1 END, sequence`).all();
+      for (const row of rows) {
+        const event: BridgeEvent = JSON.parse(String(row.event));
+        if (filter && !filter(event)) continue;
+        this.db.prepare("UPDATE bridge_events SET status='reserved' WHERE id=?").run(event.id);
+        return event;
       }
-      if (filter && !filter(row.event)) continue;
-      row.status = "reserved";
-      this.statePendingByKey.delete(key);
-      return row.event;
-    }
-
-    return null;
+      return null;
+    });
   }
 
   markDelivered(eventId: string): void {
-    const row = this.getRow(eventId);
-    if (!row) throw new Error(`Unknown event: ${eventId}`);
-    if (row.status === "delivered") return;
-    if (row.status !== "reserved") {
-      throw new Error(`Event is not reserved: ${eventId}`);
-    }
-    row.status = "delivered";
+    this.transaction(() => {
+      const row = this.row(eventId);
+      if (!row) throw new Error(`Unknown event: ${eventId}`);
+      if (row.status === "delivered") return;
+      if (row.status !== "reserved") throw new Error(`Event is not reserved: ${eventId}`);
+      this.db.prepare("UPDATE bridge_events SET status='delivered' WHERE id=?").run(eventId);
+    });
   }
 
   release(eventId: string): void {
-    const row = this.getRow(eventId);
-    if (!row || row.status === "delivered") return;
-
-    if (row.event.stream === "state") {
-      const key = row.event.stateKey ?? row.event.source;
-      const newerPendingId = this.statePendingByKey.get(key);
-      if (newerPendingId && newerPendingId !== eventId) {
-        this.stateRows.delete(eventId);
-        return;
+    this.transaction(() => {
+      const row = this.row(eventId);
+      if (!row || row.status === "delivered") return;
+      if (row.event.stream === "state") {
+        const newer = this.db.prepare(`SELECT id FROM bridge_events WHERE stream='state' AND state_key=?
+          AND sequence>(SELECT sequence FROM bridge_events WHERE id=?) LIMIT 1`)
+          .get(row.event.stateKey ?? row.event.source, eventId);
+        if (newer) {
+          this.db.prepare("DELETE FROM bridge_events WHERE id=?").run(eventId);
+          return;
+        }
       }
-      row.status = "pending";
-      this.statePendingByKey.delete(key);
-      this.statePendingByKey.set(key, eventId);
-      return;
-    }
-
-    row.status = "pending";
+      this.db.prepare("UPDATE bridge_events SET status='pending' WHERE id=?").run(eventId);
+    });
   }
 
   dismiss(eventId: string): void {
-    const row = this.getRow(eventId);
-    if (!row) throw new Error(`Unknown event: ${eventId}`);
-    if (row.status === "pending") {
-      throw new Error(`Event is not reserved: ${eventId}`);
-    }
-
-    row.status = "delivered";
-
-    if (row.event.replyPolicy !== "required") return;
-
-    if (row.reply) {
-      row.reply.completed = true;
-      row.reply.inFlight = false;
-      row.reply.completedAt = new Date().toISOString();
-      return;
-    }
-
-    row.reply = {
-      fingerprint: "__dismissed__",
-      sentCount: 0,
-      completed: true,
-      inFlight: false,
-      completedAt: new Date().toISOString(),
-    };
+    this.transaction(() => {
+      const row = this.row(eventId);
+      if (!row) throw new Error(`Unknown event: ${eventId}`);
+      if (row.status === "pending") throw new Error(`Event is not reserved: ${eventId}`);
+      this.db.prepare("UPDATE bridge_events SET status='delivered' WHERE id=?").run(eventId);
+      if (row.event.replyPolicy !== "required") return;
+      const reply = row.reply ?? { fingerprint: "__dismissed__", sentCount: 0, completed: false, inFlight: false };
+      reply.completed = true;
+      reply.inFlight = false;
+      delete reply.sendingIndex;
+      reply.completedAt = new Date().toISOString();
+      this.saveReply(eventId, reply);
+    });
   }
 
-  claimReply(eventId: string, fingerprint: string): ReplyClaim {
-    const row = this.getRow(eventId);
-    if (!row) throw new Error(`Unknown event: ${eventId}`);
-    const reply = row.reply;
-
-    if (!reply) {
-      row.reply = {
-        fingerprint,
-        sentCount: 0,
-        completed: false,
-        inFlight: true,
-      };
-      return { state: "send", sentCount: 0 };
-    }
-
-    if (reply.completed) {
-      return { state: "already_completed", sentCount: reply.sentCount };
-    }
-    if (reply.fingerprint !== fingerprint) {
-      throw new Error(`Event already has a different reply: ${eventId}`);
-    }
-    if (reply.inFlight) {
-      return { state: "in_progress", sentCount: reply.sentCount };
-    }
-
-    reply.inFlight = true;
-    return { state: "send", sentCount: reply.sentCount };
+  claimReply(eventId: string, fingerprint: string, messages?: string[]): ReplyClaim {
+    return this.transaction(() => {
+      const row = this.row(eventId);
+      if (!row) throw new Error(`Unknown event: ${eventId}`);
+      const reply = row.reply;
+      if (!reply) {
+        this.saveReply(eventId, { fingerprint, sentCount: 0, completed: false, inFlight: true, owner: PROCESS_OWNER, messages });
+        return { state: "send", sentCount: 0 };
+      }
+      if (reply.completed) return { state: "already_completed", sentCount: reply.sentCount };
+      if (reply.fingerprint !== fingerprint) throw new Error(`Event already has a different reply: ${eventId}`);
+      if (reply.inFlight && reply.owner === PROCESS_OWNER) return { state: "in_progress", sentCount: reply.sentCount };
+      if (reply.sendingIndex !== undefined) throw new Error(`Reply delivery is uncertain; verify the last bubble and use cove_bridge_recover_reply: ${eventId}`);
+      reply.inFlight = true;
+      reply.owner = PROCESS_OWNER;
+      this.saveReply(eventId, reply);
+      return { state: "send", sentCount: reply.sentCount };
+    });
   }
 
-  markReplyMessageSent(eventId: string, fingerprint: string): number {
-    const row = this.getRow(eventId);
-    if (!row?.reply || row.reply.fingerprint !== fingerprint) {
-      throw new Error(`Reply is not claimed: ${eventId}`);
-    }
-    row.reply.sentCount += 1;
-    return row.reply.sentCount;
+  private claimedReply(eventId: string, fingerprint: string): ReplyDeliveryState {
+    const reply = this.row(eventId)?.reply;
+    if (!reply || reply.fingerprint !== fingerprint) throw new Error(`Reply is not claimed: ${eventId}`);
+    return reply;
+  }
+
+  markReplySending(eventId: string, fingerprint: string): void {
+    this.transaction(() => {
+      const reply = this.claimedReply(eventId, fingerprint);
+      if (!reply.inFlight || reply.completed || reply.sendingIndex !== undefined) throw new Error(`Reply cannot start another send: ${eventId}`);
+      if (reply.messages && reply.sentCount >= reply.messages.length) throw new Error(`Reply has no unsent bubble: ${eventId}`);
+      reply.sendingIndex = reply.sentCount;
+      this.saveReply(eventId, reply);
+    });
+  }
+
+  markReplyMessageSent(eventId: string, fingerprint: string, receipt?: ReplyDeliveryState["lastReceipt"]): number {
+    return this.transaction(() => {
+      const reply = this.claimedReply(eventId, fingerprint);
+      reply.sentCount += 1;
+      if (receipt) reply.lastReceipt = receipt;
+      delete reply.sendingIndex;
+      this.saveReply(eventId, reply);
+      return reply.sentCount;
+    });
   }
 
   markReplyCompleted(eventId: string, fingerprint: string): void {
-    const row = this.getRow(eventId);
-    if (!row?.reply || row.reply.fingerprint !== fingerprint) {
-      throw new Error(`Reply is not claimed: ${eventId}`);
-    }
-    row.reply.completed = true;
-    row.reply.inFlight = false;
-    row.reply.completedAt = new Date().toISOString();
+    this.transaction(() => {
+      const reply = this.claimedReply(eventId, fingerprint);
+      if (reply.sendingIndex !== undefined) throw new Error(`Reply delivery is uncertain: ${eventId}`);
+      if (reply.messages && reply.sentCount !== reply.messages.length) throw new Error(`Reply still has unsent bubbles: ${eventId}`);
+      reply.completed = true;
+      reply.inFlight = false;
+      reply.completedAt = new Date().toISOString();
+      this.saveReply(eventId, reply);
+      this.db.prepare("UPDATE bridge_events SET status='delivered' WHERE id=?").run(eventId);
+    });
   }
 
-  releaseReply(eventId: string, fingerprint: string): void {
-    const row = this.getRow(eventId);
-    if (!row?.reply || row.reply.fingerprint !== fingerprint || row.reply.completed) return;
-    row.reply.inFlight = false;
+  releaseReply(eventId: string, fingerprint: string, retrySafe = false): void {
+    this.transaction(() => {
+      const reply = this.row(eventId)?.reply;
+      if (!reply || reply.fingerprint !== fingerprint || reply.completed) return;
+      reply.inFlight = false;
+      if (retrySafe) delete reply.sendingIndex;
+      this.saveReply(eventId, reply);
+    });
+  }
+
+  recoverReply(eventId: string, lastBubbleDelivered: boolean): ReplyDeliveryState {
+    return this.transaction(() => {
+      const reply = this.row(eventId)?.reply;
+      if (!reply || reply.completed || reply.sendingIndex === undefined) throw new Error(`Reply has no uncertain send: ${eventId}`);
+      if (reply.inFlight && reply.owner === PROCESS_OWNER) throw new Error(`Reply is still being delivered: ${eventId}`);
+      if (lastBubbleDelivered) reply.sentCount += 1;
+      delete reply.sendingIndex;
+      reply.inFlight = false;
+      this.saveReply(eventId, reply);
+      return reply;
+    });
   }
 
   status(): QueueStatus {
-    const conversation = this.countRows(this.conversationRows);
-    const state = this.countRows(this.stateRows);
+    const conversation = emptyCounts();
+    const state = emptyCounts();
+    const rows = this.db.prepare("SELECT stream,status,count(*) AS count FROM bridge_events GROUP BY stream,status").all();
+    for (const row of rows) {
+      const counts = row.stream === "conversation" ? conversation : state;
+      counts[row.status as StoredBridgeEvent["status"]] += Number(row.count);
+      counts.total += Number(row.count);
+    }
     return {
       pending: conversation.pending + state.pending,
       reserved: conversation.reserved + state.reserved,
       delivered: conversation.delivered + state.delivered,
       total: conversation.total + state.total,
-      conversation,
-      state,
+      conversation, state,
     };
   }
+}
 
-  private getRow(eventId: string): StoredBridgeEvent | undefined {
-    return this.conversationRows.get(eventId) ?? this.stateRows.get(eventId);
-  }
-
-  private countRows(rows: Map<string, StoredBridgeEvent>): StreamCounts {
-    const counts = emptyCounts();
-    counts.total = rows.size;
-    for (const row of rows.values()) counts[row.status] += 1;
-    return counts;
-  }
-
-  private pruneStateHistory(key: string): void {
-    const deliveredIds: string[] = [];
-    for (const [eventId, row] of this.stateRows) {
-      if ((row.event.stateKey ?? row.event.source) !== key) continue;
-      if (row.status === "delivered") deliveredIds.push(eventId);
-    }
-    const overflow = deliveredIds.length - STATE_HISTORY_PER_KEY;
-    for (let index = 0; index < overflow; index += 1) {
-      this.stateRows.delete(deliveredIds[index]);
-    }
-  }
+export class InMemoryEventQueue extends SqliteEventQueue {
+  constructor() { super(":memory:"); }
 }

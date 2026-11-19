@@ -8,19 +8,19 @@ import { NeteaseClient } from "./netease/client.js";
 import { registerNeteaseTogetherTools } from "./netease/registerTogetherTools.js";
 import type { PlaybackStateStore } from "./netease/playbackState.js";
 import type { TogetherWorker } from "./netease/togetherWorker.js";
-import type { InMemoryEventQueue } from "./queue.js";
+import type { SqliteEventQueue } from "./queue.js";
 
 export { RESOURCE_URI } from "./bridge/registerApp.js";
 export type { McpProfile } from "./profiles.js";
 
 export function createMcpServer(
-  queue: InMemoryEventQueue,
+  queue: SqliteEventQueue,
   playbackState: PlaybackStateStore,
   togetherWorker: TogetherWorker,
   profile: McpProfile = "default",
 ): McpServer {
   const server = new McpServer(
-    { name: profile === "music" ? "cove-resonance-music" : "cove-resonance", version: "0.2.0" },
+    { name: profile === "music" ? "cove-resonance-music" : "cove-resonance", version: "0.3.0" },
     { instructions: buildProfileInstructions(profile) },
   );
   const eventFilter = (event: { source: string }) => acceptsProfileSource(profile, event.source);
@@ -34,3 +34,4 @@ export function createMcpServer(
 
   return server;
 }
+

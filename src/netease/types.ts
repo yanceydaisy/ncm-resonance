@@ -54,6 +54,7 @@ export type RawLyrics = {
 
 export type TogetherPhase =
   | "disabled"
+  | "stopped"
   | "starting"
   | "waiting_invite"
   | "joining"
@@ -93,3 +94,4 @@ export function readNumber(value: unknown): number | null {
   }
   return null;
 }
+

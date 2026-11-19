@@ -99,10 +99,17 @@ Still under stability validation:
 - long-running SSE listener/reconnect behavior
 - edge cases around ACK/reconnect
 
-Roadmap, not completed:
+Implemented in 0.3.0 with automated restart and failure regression coverage:
 
-- SQLite persistence
-- crash-safe reply journal
+- SQLite event queue and per-bubble reply journal
+- persisted dedupe, reservations, host ACKs and saved reply text
+- stable NetEase event identities and original-room reply binding
+- explicit recovery for ambiguous send acknowledgements
+- worker lifecycle cancellation and native shutdown
+
+Read `docs/PERSISTENCE.zh-CN.md` before changing recovery behavior. Preserve an unresolved send marker until the destination result has been verified. Existing delivered host events stay delivered across restarts.
+
+Roadmap, not completed:
 - unattended listener watchdog
 - multi-listener semantics
 - one-command deployment
@@ -186,3 +193,4 @@ Listener session tokens must remain short-lived and single-use.
 ```
 
 This is not branding only; it defines queue semantics.
+

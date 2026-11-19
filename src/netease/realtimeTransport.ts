@@ -52,6 +52,13 @@ export type RealtimeTransportStatus = {
   lastError: string | null;
 };
 
+export type RealtimeChatSendOptions = { roomId?: string; chatRoomId?: string; messageId?: string };
+
+export function isDefinitiveChatSendFailure(error: unknown): boolean {
+  return error instanceof Error
+    && /rejected locally|NIM ChatRoom send failed|netease_route_changed|Not connected|transport is disabled/.test(error.message);
+}
+
 export type RealtimeChatSendResult = {
   ok: true;
   roomId: string;
@@ -82,6 +89,8 @@ type ChatRoomLike = {
   initEventHandlers(): void;
   enter(roomId: number, requestLoginData: string, info: Record<string, unknown>, extension: string): boolean;
   exit(roomId: number, extension: string): void;
+  cleanup(extension: string): void;
+  once(event: string, handler: EventHandler): unknown;
   sendMsg(roomId: number, msg: Record<string, unknown>, extension: string): boolean;
   updateMyRoomRoleAsync(
     roomId: number,
@@ -654,7 +663,7 @@ export class NeteaseRealtimeTransport {
 
     chatroom.on("receiveMsg", (...args: unknown[]) => {
       const room = readNumber(args[0]);
-      if (this.roomNumber !== null && room !== this.roomNumber) return;
+      if (this.roomNumber === null || room !== this.roomNumber) return;
       const receivedAtMs = Date.now();
       const event = decodeRealtimePlaybackEvent(args[1], receivedAtMs);
       if (event) {
@@ -698,7 +707,7 @@ export class NeteaseRealtimeTransport {
 
     chatroom.on("exit", (...args: unknown[]) => {
       const room = readNumber(args[0]);
-      if (this.roomNumber !== null && room !== this.roomNumber) return;
+      if (this.roomNumber === null || room !== this.roomNumber) return;
       const reason = readNumber(args[2]) ?? readNumber(args[1]);
       this.status.connected = false;
       this.status.lastError = `NIM chatroom exited${reason === null ? "" : ` reason=${reason}`}`;
@@ -707,7 +716,7 @@ export class NeteaseRealtimeTransport {
 
     chatroom.on("linkCondition", (...args: unknown[]) => {
       const room = readNumber(args[0]);
-      if (this.roomNumber !== null && room !== this.roomNumber) return;
+      if (this.roomNumber === null || room !== this.roomNumber) return;
       const condition = readNumber(args[1]);
       if (condition === 0) {
         if (this.roomNumber !== null) this.status.connected = true;
@@ -743,6 +752,7 @@ export class NeteaseRealtimeTransport {
     };
 
     await this.ensureRuntime();
+    if (generation !== this.generation) return;
     const chatroom = this.chatroom;
     if (!chatroom) throw new Error("NIM realtime runtime is unavailable");
 
@@ -757,6 +767,7 @@ export class NeteaseRealtimeTransport {
 
     const [requestCode, requestLoginData] =
       await this.requestEnterTicket(options.credentials, roomNumber);
+    if (generation !== this.generation) return;
     if (requestCode !== 200 || !requestLoginData) {
       throw new Error(`NIM chatroom enter ticket failed code=${requestCode}`);
     }
@@ -799,6 +810,7 @@ export class NeteaseRealtimeTransport {
           null,
           "",
         );
+        if (generation !== this.generation) return;
         if (updateCode !== 200) {
           throw new Error(`NIM ChatRoom member profile update failed code=${updateCode}`);
         }
@@ -809,6 +821,7 @@ export class NeteaseRealtimeTransport {
           null,
           "",
         );
+        if (generation !== this.generation) return;
         if (lookupCode !== 200) {
           throw new Error(`NIM ChatRoom member profile verify failed code=${lookupCode}`);
         }
@@ -818,6 +831,7 @@ export class NeteaseRealtimeTransport {
         );
       }
 
+      if (generation !== this.generation) return;
       this.activeMemberProfile = options.memberProfile ?? null;
       this.status.connected = true;
       this.status.lastError = null;
@@ -827,7 +841,7 @@ export class NeteaseRealtimeTransport {
     }
   }
 
-  async sendChatRoomText(text: string): Promise<RealtimeChatSendResult> {
+  async sendChatRoomText(text: string, options: RealtimeChatSendOptions = {}): Promise<RealtimeChatSendResult> {
     const chatroom = this.chatroom;
     const roomNumber = this.roomNumber;
     const roomId = this.status.roomId;
@@ -837,7 +851,9 @@ export class NeteaseRealtimeTransport {
       throw new Error("Not connected to a NetEase ChatRoom");
     }
 
-    const messageId = randomUUID();
+    if ((options.roomId && options.roomId !== roomId) || (options.chatRoomId && options.chatRoomId !== chatRoomId)) throw new Error("netease_route_changed");
+    const messageId = options.messageId || randomUUID();
+    if (this.pendingSends.has(messageId)) throw new Error("NIM ChatRoom send already pending");
     const msg = buildRealtimeChatTextMessage(text, roomId, messageId, this.activeMemberProfile ?? undefined);
     const normalized = text.trim();
 
@@ -894,8 +910,50 @@ export class NeteaseRealtimeTransport {
     }
   }
 
+  async shutdown(): Promise<void> {
+    const chatroom = this.chatroom;
+    const roomNumber = this.roomNumber;
+    let exitObserved: Promise<void> = Promise.resolve();
+
+    if (chatroom && roomNumber !== null) {
+      exitObserved = new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer = setTimeout(finish, 1_500);
+        timer.unref?.();
+        chatroom.once("exit", (...args: unknown[]) => {
+          const room = readNumber(args[0]);
+          if (room === roomNumber) finish();
+        });
+      });
+    }
+
+    await this.disconnect();
+    await exitObserved;
+
+    if (chatroom && this.runtimeReady) {
+      try {
+        chatroom.cleanup("");
+      } catch (error) {
+        console.warn(
+          "NIM ChatRoom cleanup failed:",
+          error instanceof Error ? error.name : "unknown",
+        );
+      }
+      this.chatroom = null;
+      this.runtimeReady = false;
+      await new Promise<void>((resolve) => setTimeout(resolve, 150));
+    }
+  }
+
   recordConnectionError(error: unknown): void {
     this.status.connected = false;
     this.status.lastError = error instanceof Error ? error.message : "NIM realtime connect failed";
   }
 }
+

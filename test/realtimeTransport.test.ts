@@ -149,3 +149,20 @@ test("decodes playback clientSeq and senderId for outbound confirmation", () => 
   assert.equal(event?.serverSeq, 123);
   assert.equal(event?.commandType, "PAUSE");
 });
+
+
+test("restored replies cannot send into a different room", async () => {
+  const { NeteaseRealtimeTransport } = await import("../src/netease/realtimeTransport.js");
+  const transport = new NeteaseRealtimeTransport(true);
+  const internal = transport as unknown as {
+    roomNumber: number;
+    status: { connected: boolean; roomId: string; chatRoomId: string };
+    chatroom: { sendMsg(): boolean };
+  };
+  internal.roomNumber = 456;
+  internal.status = { connected: true, roomId: "new-room", chatRoomId: "456" };
+  let sent = 0;
+  internal.chatroom = { sendMsg: () => { sent += 1; return true; } };
+  await assert.rejects(transport.sendChatRoomText("saved reply", { roomId: "old-room", chatRoomId: "123" }), /route_changed/);
+  assert.equal(sent, 0);
+});

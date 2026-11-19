@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { resolve } from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 import { createMcpServer } from "./mcp.js";
@@ -10,26 +11,31 @@ import { MCP_PATHS } from "./profiles.js";
 import { listenerWakeHub } from "./listenerWake.js";
 import { PlaybackStateStore } from "./netease/playbackState.js";
 import { createTogetherWorker } from "./netease/togetherWorker.js";
-import { InMemoryEventQueue } from "./queue.js";
+import { SqliteEventQueue } from "./queue.js";
+import type { BridgeEvent } from "./types.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const INGEST_TOKEN = process.env.BRIDGE_INGEST_TOKEN ?? "";
 const UNIX_SOCKET = process.env.BRIDGE_UNIX_SOCKET?.trim() ?? "";
-const queue = new InMemoryEventQueue();
+const queue = new SqliteEventQueue(process.env.BRIDGE_DB_PATH?.trim()
+  || (process.env.NODE_ENV === "test" ? ":memory:" : resolve("data/bridge.sqlite")));
 const playbackState = new PlaybackStateStore();
 
 function enqueueTogetherEvent(
   source: string,
   text: string,
   additionalModelContext?: string,
+  eventId?: string,
+  replyTarget?: BridgeEvent["replyTarget"],
 ): boolean {
-  const id = randomUUID();
+  const id = eventId ?? randomUUID();
   const created = queue.enqueue(buildBridgeEvent(
     id,
     source,
     text,
     new Date().toISOString(),
     additionalModelContext,
+    replyTarget,
   ));
   if (created) listenerWakeHub.wake(source);
   return created;
@@ -88,7 +94,7 @@ export function createHttpServer() {
       writeJson(res, 200, {
         ok: true,
         service: "cove-bridge",
-        version: "0.1.0",
+        version: "0.3.0",
         queue: queue.status(),
         listener: listenerWakeHub.status(),
       });
@@ -163,16 +169,35 @@ export function createHttpServer() {
 }
 
 if (process.env.NODE_ENV !== "test") {
-  createHttpServer().listen(PORT, "0.0.0.0", () => {
+  const servers = [createHttpServer()];
+  servers[0].listen(PORT, "0.0.0.0", () => {
     console.log("Cove Resonance listening on http://0.0.0.0:" + PORT + " (MCP: /mcp, /mcp/music)");
     togetherWorker.start();
   });
 
   if (UNIX_SOCKET) {
     if (existsSync(UNIX_SOCKET)) unlinkSync(UNIX_SOCKET);
-    createHttpServer().listen(UNIX_SOCKET, () => {
+    const unixServer = createHttpServer();
+    servers.push(unixServer);
+    unixServer.listen(UNIX_SOCKET, () => {
       chmodSync(UNIX_SOCKET, 0o666);
       console.log("Cove Resonance listening on unix://" + UNIX_SOCKET + " (MCP: /mcp, /mcp/music)");
     });
   }
+
+  let stopping = false;
+  const shutdown = async () => {
+    if (stopping) return;
+    stopping = true;
+    await togetherWorker.shutdown();
+    for (const server of servers) {
+      server.closeAllConnections();
+      server.close();
+    }
+    queue.close();
+    process.exit(0);
+  };
+  process.once("SIGINT", () => { void shutdown(); });
+  process.once("SIGTERM", () => { void shutdown(); });
 }
+

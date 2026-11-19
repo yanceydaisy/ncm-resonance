@@ -11,6 +11,7 @@ export type BridgeEvent = {
   stateKey?: string;
   replyRoute?: ReplyRoute;
   replyPolicy?: ReplyPolicy;
+  replyTarget?: { roomId: string; chatRoomId: string };
   createdAt: string;
   visibleText: string;
   modelContext: string;
@@ -24,6 +25,17 @@ export type ReplyDeliveryState = {
   completed: boolean;
   inFlight: boolean;
   completedAt?: string;
+  owner?: string;
+  sendingIndex?: number;
+  messages?: string[];
+  lastReceipt?: {
+    ok: true;
+    roomId: string;
+    chatRoomId: string;
+    messageId: string;
+    text: string;
+    code: number;
+  };
 };
 
 export type StoredBridgeEvent = {
@@ -31,3 +43,4 @@ export type StoredBridgeEvent = {
   status: EventStatus;
   reply?: ReplyDeliveryState;
 };
+

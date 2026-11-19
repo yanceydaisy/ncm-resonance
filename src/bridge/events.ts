@@ -24,6 +24,7 @@ export function buildBridgeEvent(
   text: string,
   createdAt = new Date().toISOString(),
   additionalModelContext?: string,
+  replyTarget?: BridgeEvent["replyTarget"],
 ): BridgeEvent {
   const routing = replyRoutingFor(source);
   const streamRouting = streamRoutingFor(source);
@@ -67,6 +68,7 @@ export function buildBridgeEvent(
     source,
     ...streamRouting,
     ...routing,
+    ...(replyTarget ? { replyTarget } : {}),
     createdAt,
     visibleText,
     modelContext: [
@@ -85,3 +87,4 @@ export function buildBridgeEvent(
     ].join("\n"),
   };
 }
+

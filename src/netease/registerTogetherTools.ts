@@ -2,17 +2,18 @@ import { createHash } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { listenerWakeHub } from "../listenerWake.js";
-import type { InMemoryEventQueue } from "../queue.js";
+import type { SqliteEventQueue } from "../queue.js";
 import { normalizeReplyBubbles } from "../replyBubbles.js";
 import type { BridgeEvent } from "../types.js";
 import type { PlaybackStateStore } from "./playbackState.js";
 import type { TogetherWorker } from "./togetherWorker.js";
+import { isDefinitiveChatSendFailure } from "./realtimeTransport.js";
 
 export function registerNeteaseTogetherTools(
   server: McpServer,
   playbackState: PlaybackStateStore,
   togetherWorker: TogetherWorker,
-  queue: InMemoryEventQueue,
+  queue: SqliteEventQueue,
   eventFilter: (event: BridgeEvent) => boolean,
 ): void {
   server.registerTool(
@@ -330,7 +331,7 @@ export function registerNeteaseTogetherTools(
           messages: bubbles,
         }))
         .digest("hex");
-      const claim = queue.claimReply(outstanding.id, fingerprint);
+      const claim = queue.claimReply(outstanding.id, fingerprint, bubbles);
       if (claim.state === "in_progress") {
         throw new Error(`Routed reply is already in progress: ${outstanding.id}`);
       }
@@ -339,10 +340,14 @@ export function registerNeteaseTogetherTools(
       }
 
       try {
-        let result = null;
+        let result = queue.getReply(outstanding.id)?.lastReceipt ?? null;
         for (let index = claim.sentCount; index < bubbles.length; index += 1) {
-          result = await togetherWorker.sendChatRoomText(bubbles[index]);
-          queue.markReplyMessageSent(outstanding.id, fingerprint);
+          queue.markReplySending(outstanding.id, fingerprint);
+          result = await togetherWorker.sendChatRoomText(bubbles[index], {
+            ...outstanding.replyTarget,
+            messageId: createHash("sha256").update(fingerprint + ":" + index).digest("hex"),
+          });
+          queue.markReplyMessageSent(outstanding.id, fingerprint, result);
           if (index < bubbles.length - 1) {
             await new Promise<void>((resolve) => setTimeout(resolve, 350));
           }
@@ -358,9 +363,10 @@ export function registerNeteaseTogetherTools(
           content: [{ type: "text", text: JSON.stringify(result) }],
         };
       } catch (error) {
-        queue.releaseReply(outstanding.id, fingerprint);
+        queue.releaseReply(outstanding.id, fingerprint, isDefinitiveChatSendFailure(error));
         throw error;
       }
     },
   );
 }
+

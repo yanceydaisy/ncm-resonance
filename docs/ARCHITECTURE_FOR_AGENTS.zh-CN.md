@@ -1733,87 +1733,25 @@ last error
 
 ---
 
-# 34. 为什么 Queue 现在还是内存
+# 34. SQLite 队列
 
-当前优先证明：
+0.3.0 起，服务端默认使用 `SqliteEventQueue`，数据库路径由 `BRIDGE_DB_PATH` 配置，默认 `./data/bridge.sqlite`。`InMemoryEventQueue` 保留原构造方式，使用 SQLite 的内存数据库，供现有测试和嵌入式调用使用。
 
-```text
-routing correctness
-host delivery correctness
-reply correctness
-realtime path correctness
-```
+Conversation 顺序、State 最新值、profile filter 与 required-reply backpressure 共用原有接口。写操作使用事务，数据库启用 WAL 和 FULL synchronous。
 
-持久化还没加。
+# 35. 持久化内容与恢复
 
-已知限制：
+数据库保存事件正文、目标房间、pending / reserved / delivered、回复正文、fingerprint、sentCount、发送中标记、完成状态和最后确认回执。
 
-```text
-Bridge process restart
-→ pending / reserved / reply state 丢失
-```
+重启保留 reserved 和 delivered。Widget 优先补交本地保存的 ACK，并用原 eventId 拦截重复显示。未确认的 reservation 可以通过 sync 取回原事件。Long-wait 返回 outstanding 事件的上下文与已保存回复，继续原处理流程。
 
-正式长期运行建议 SQLite。
+State 待处理记录按 stateKey 合并，恢复时跳过已经被更新状态覆盖的旧 reservation。
 
----
+# 36. 发送一致性
 
-# 35. SQLite 应该持久化什么
+发送前提交 sendingIndex，NIM 确认后提交 sentCount 并清除该标记。确认后的气泡在重试时跳过。发送成功与本地提交之间仍有跨系统窗口，回执缺失的气泡需要先核实收件端结果。
 
-Conversation 建议：
-
-```text
-eventId
-correlationId
-source
-visibleText / modelContext
-createdAt
-status
-replyRoute
-replyPolicy
-reservedAt
-deliveredAt
-
-replyFingerprint
-replySentCount
-replyCompleted
-replyCompletedAt
-```
-
-State 不一定要完整历史。
-
-更合理：
-
-```text
-按 stateKey 保存 latest snapshot
-+ 少量审计 history
-```
-
-不要把陈旧 PLAY/PROGRESS 事件全 replay 回模型。
-
----
-
-# 36. Crash consistency 要注意的点
-
-SQLite 版要避免：
-
-```text
-外部 send 成功
-↓
-进程 crash
-↓
-sentCount 还没 commit
-↓
-重启后重复发
-```
-
-更严格版本需要：
-
-- egress provider idempotency key（如果支持）
-- send journal
-- transaction
-- provider receipt
-
-当前内存版只能做到进程内幂等。
+`cove_bridge_recover_reply` 记录人类核实的结果，随后用保存的 messages 继续 `cove_bridge_reply`。具体步骤见 [持久化说明](PERSISTENCE.zh-CN.md)。
 
 ---
 
@@ -1980,8 +1918,6 @@ src/netease/lyricsContext.ts
 
 ## 还没有宣称完成
 
-- SQLite persistence
-- crash-safe reply journal
 - multi-listener semantics
 - unattended Listener watchdog
 - 一键部署
@@ -2174,3 +2110,4 @@ Official AI client
 还在，这个项目就没有推倒重来。
 
 这就是 Cove Resonance 的底层架构。
+

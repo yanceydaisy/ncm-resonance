@@ -1,6 +1,6 @@
 # Cove Resonance
 
-> **V2 — accepted on 2026-09-28**
+> **0.3.0 — SQLite 持久化与连接恢复，2026-11-19**
 >
 > 不搬 AI，给 AI 修路。
 
@@ -9,6 +9,19 @@
 Cove Resonance 让 AI 留在 ChatGPT、用户留在原本的应用里，中间用 Bridge 把外部事件、实时状态和回复真正接通。
 
 我们最早从网易云「一起听」开始：听见聊天室消息、知道正在播什么、读歌词、控制播放，再把回复沿原路送回去。
+
+## 0.3.0 更新
+
+- 默认使用 SQLite 保存事件、投递确认、回复正文、逐气泡回执与去重记录。
+- 重启后恢复待处理消息与回复进度，Long-wait 可以继续处理原事件。
+- 发送前写入日志，收到 NIM 回执后提交进度。回执不确定时保留现场，核实后继续。
+- 网易云消息使用稳定事件 ID，重连重放与重启后的重复消息都会经过持久化去重。
+- 回复绑定原一起听房间，发送前校验目标。
+- 同步连接停止、重启、旧异步回调过滤与 native runtime 清理修复。
+
+部署需要 Node.js 22.16 或更新的 22.x。数据库默认保存在 `./data/bridge.sqlite`，可通过 `BRIDGE_DB_PATH` 配置。Docker 部署需要挂载数据目录。
+
+升级与恢复操作见 [持久化说明](docs/PERSISTENCE.zh-CN.md)。
 
 ## V2 更新
 
@@ -100,11 +113,9 @@ npm run build
 
 ## 下一步
 
-V2 已跑通。下一阶段优先建议：
+当前可继续完善 Listener watchdog、多 Listener ownership、可观测性与部署体验。
 
-**SQLite 持久化 Queue → 重启恢复 / reservation lease → Listener watchdog → multi-listener ownership → observability → 更简单的部署。**
-
-详细见 **[V2 Roadmap](docs/V2.zh-CN.md#下一阶段建议优化)**。
+历史 V2 路线图保存在 [V2 文档](docs/V2.zh-CN.md)，其中 SQLite 与回复日志已在 0.3.0 实现。
 
 ## 安全
 
@@ -128,3 +139,4 @@ Licensed under the **MIT License**. See [LICENSE](LICENSE).
 > **不搬 AI，给 AI 修路。**
 
 Built by **Yancey × Cove**.
+
