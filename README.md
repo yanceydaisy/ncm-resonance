@@ -1,6 +1,6 @@
 # NCM Resonance
 
-> **0.6.0 — NCM Resonance｜网易云共振，2026-11-20**
+> **2.1.0 — NCM Resonance｜网易云共振，2026-11-20**
 >
 > 不搬 AI，给 AI 修路。
 
@@ -8,7 +8,7 @@
 
 首个适配器支持网易云「一起听」：听见聊天室消息、知道正在播什么、读歌词、控制播放，再把回复沿原路送回去。
 
-## 0.6.0 更新
+## 2.1.0 更新
 
 项目正式命名为 **NCM Resonance（网易云共振）**，保留原名的 Resonance，并用 NCM 明确指向 NetEase Cloud Music。官端 Listener、Codex 后端、npm 包、部署示例与工具说明已统一。
 

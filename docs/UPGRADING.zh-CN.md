@@ -1,6 +1,6 @@
-# 升级到 NCM Resonance 0.6.0
+# 升级到 NCM Resonance 2.1.0
 
-0.6.0 将项目、官端组件与 Codex 客户端正式命名为 NCM Resonance。桥接工具现在使用 `ncm_resonance_` 前缀，打开官端组件使用 `open_ncm_resonance`。网易云工具名称保持 `netease_` 前缀。
+2.1.0 将项目、官端组件与 Codex 客户端正式命名为 NCM Resonance。桥接工具现在使用 `ncm_resonance_` 前缀，打开官端组件使用 `open_ncm_resonance`。网易云工具名称保持 `netease_` 前缀。
 
 ## 数据目录
 

@@ -135,7 +135,7 @@ export function createHttpServer() {
       writeJson(res, 200, {
         ok: true,
         service: "ncm-resonance",
-        version: "0.6.0",
+        version: "2.1.0",
         backend: AI_BACKEND,
         codex: AI_BACKEND === "codex" ? { busy: codex?.status().busy ?? false, error: codexStartupError } : undefined,
         queue: queue.status(),

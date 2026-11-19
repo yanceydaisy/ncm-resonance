@@ -82,7 +82,7 @@ export class CodexRuntime implements CodexEngine {
     child.on("error", error => this.unavailable(child, error));
     child.on("exit", () => this.unavailable(child, new Error("Codex app-server disconnected")));
     try {
-      await this.request("initialize", { clientInfo: { name: "ncm-resonance", title: "NCM Resonance", version: "0.6.0" }, capabilities: { experimentalApi: true } });
+      await this.request("initialize", { clientInfo: { name: "ncm-resonance", title: "NCM Resonance", version: "2.1.0" }, capabilities: { experimentalApi: true } });
       this.write({ method: "initialized", params: {} });
     } catch (error) {
       this.unavailable(child, error instanceof Error ? error : new Error(String(error)));

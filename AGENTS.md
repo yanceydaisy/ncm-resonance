@@ -132,7 +132,7 @@ Do not rewrite roadmap items as completed features.
 
 ## Change discipline
 
-0.6.0 publishes NCM Resonance project, widget and tool names. `src/legacyNames.ts` accepts both older protocol generations without listing them. Preserve legacy queue-context normalization, widget local-storage migration and Codex history-marker recovery. Do not rewrite stored human messages, saved reply text, receipt fingerprints or existing data-directory bindings during a rename.
+2.1.0 publishes NCM Resonance project, widget and tool names. `src/legacyNames.ts` accepts both older protocol generations without listing them. Preserve legacy queue-context normalization, widget local-storage migration and Codex history-marker recovery. Do not rewrite stored human messages, saved reply text, receipt fingerprints or existing data-directory bindings during a rename.
 
 Before coding:
 
