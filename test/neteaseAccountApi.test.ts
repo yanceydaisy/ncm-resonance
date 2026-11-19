@@ -16,8 +16,9 @@ const ACCOUNT_OPERATIONS = [
   "recommend_songs",
 ] as const;
 
-test("installed NeteaseCloudMusicApi exposes Cove account operations", () => {
+test("installed NeteaseCloudMusicApi exposes Companion account operations", () => {
   for (const operation of ACCOUNT_OPERATIONS) {
     assert.equal(typeof sdk[operation], "function", `${operation} should be available`);
   }
 });
+

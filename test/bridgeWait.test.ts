@@ -66,7 +66,7 @@ test("long-wait returns an already pending Music event immediately", async () =>
     await enqueue(base, "wait-immediate-1", "netease.playback", "playback changed");
 
     const startedAt = Date.now();
-    const body = await callTool(base, "cove_bridge_wait", { timeoutSeconds: 2 }, 1);
+    const body = await callTool(base, "resonance_bridge_wait", { timeoutSeconds: 2 }, 1);
     const elapsedMs = Date.now() - startedAt;
     const result = body.result?.structuredContent ?? {};
 
@@ -76,14 +76,14 @@ test("long-wait returns an already pending Music event immediately", async () =>
     assert.equal(result.source, "netease.playback");
     assert.ok(elapsedMs < 1000, "pending event should not wait for the full timeout");
 
-    await callTool(base, "cove_bridge_wait_ack", { eventId: "wait-immediate-1" }, 2);
+    await callTool(base, "resonance_bridge_wait_ack", { eventId: "wait-immediate-1" }, 2);
   });
 });
 
 test("long-wait times out cleanly when no Music event arrives", async () => {
   await withServer(async (base) => {
     const startedAt = Date.now();
-    const body = await callTool(base, "cove_bridge_wait", { timeoutSeconds: 1 }, 3);
+    const body = await callTool(base, "resonance_bridge_wait", { timeoutSeconds: 1 }, 3);
     const elapsedMs = Date.now() - startedAt;
     const result = body.result?.structuredContent ?? {};
 
@@ -99,14 +99,14 @@ test("long-wait does not bypass required-reply backpressure", async () => {
   await withServer(async (base) => {
     await enqueue(base, "wait-required-1", "netease.chatroom", "hello from NetEase");
 
-    const first = await callTool(base, "cove_bridge_wait", { timeoutSeconds: 2 }, 4);
+    const first = await callTool(base, "resonance_bridge_wait", { timeoutSeconds: 2 }, 4);
     const firstResult = first.result?.structuredContent ?? {};
     assert.equal(firstResult.hasEvent, true);
     assert.equal(firstResult.eventId, "wait-required-1");
     assert.equal(firstResult.replyPolicy, "required");
 
     const secondStartedAt = Date.now();
-    const second = await callTool(base, "cove_bridge_wait", { timeoutSeconds: 2 }, 5);
+    const second = await callTool(base, "resonance_bridge_wait", { timeoutSeconds: 2 }, 5);
     const elapsedMs = Date.now() - secondStartedAt;
     const secondResult = second.result?.structuredContent ?? {};
 
@@ -116,6 +116,7 @@ test("long-wait does not bypass required-reply backpressure", async () => {
     assert.equal(secondResult.eventId, "wait-required-1");
     assert.ok(elapsedMs < 1000, "backpressure should be reported immediately");
 
-    await callTool(base, "cove_bridge_dismissed", { eventId: "wait-required-1" }, 6);
+    await callTool(base, "resonance_bridge_dismissed", { eventId: "wait-required-1" }, 6);
   });
 });
+

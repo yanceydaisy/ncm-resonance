@@ -1,17 +1,17 @@
 [Unit]
-Description=Cove Listener persistent ChatGPT browser host
-After=network-online.target cove-bridge.service
+Description=Resonance Bridge Listener persistent ChatGPT browser host
+After=network-online.target resonance-bridge.service
 Wants=network-online.target
-Requires=cove-bridge.service
+Requires=resonance-bridge.service
 
 [Service]
 Type=simple
 User=www-data
 Group=www-data
-RuntimeDirectory=cove-listener
+RuntimeDirectory=resonance-listener
 RuntimeDirectoryMode=0700
 Environment=TZ=Asia/Shanghai
-ExecStart=/usr/local/bin/cove-listener-host
+ExecStart=/usr/local/bin/resonance-listener-host
 Restart=always
 RestartSec=5
 TimeoutStopSec=20
@@ -20,7 +20,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/opt/cove/listener /run/cove-listener
+ReadWritePaths=/opt/resonance-bridge/listener /run/resonance-listener
 
 [Install]
 WantedBy=multi-user.target
+

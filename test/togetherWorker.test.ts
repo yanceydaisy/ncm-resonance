@@ -448,7 +448,7 @@ test("playback control waits for a matching realtime confirmation after HTTP rep
   internals.lastPlaybackServerSeq = 100;
   internals.previousSongId = "song-1";
   internals.previousPlayStatus = "PAUSE";
-  internals.status.accountId = "cove-account";
+  internals.status.accountId = "test-account";
   internals.status.playStatus = "PAUSE";
   internals.realtime.getStatus = () => ({
     enabled: true,
@@ -488,7 +488,7 @@ test("playback control waits for a matching realtime confirmation after HTTP rep
     playStatus: "PLAY",
     receivedAtMs: Date.now(),
     clientSeq: 1,
-    senderId: "cove-account",
+    senderId: "test-account",
   });
 
   const result = await control;
@@ -552,7 +552,7 @@ test("playback control ignores a realtime event from the wrong sender and times 
   internals.lastPlaybackServerSeq = 200;
   internals.previousSongId = "song-1";
   internals.previousPlayStatus = "PLAY";
-  internals.status.accountId = "cove-account";
+  internals.status.accountId = "test-account";
   internals.status.playStatus = "PLAY";
   internals.realtime.getStatus = () => ({
     enabled: true,
@@ -664,7 +664,7 @@ test("GOTO reports the target song from progress zero and waits for realtime con
   internals.lastPlaybackServerSeq = 300;
   internals.previousSongId = "old-song";
   internals.previousPlayStatus = "PAUSE";
-  internals.status.accountId = "cove-account";
+  internals.status.accountId = "test-account";
   internals.status.playStatus = "PAUSE";
   internals.realtime.getStatus = () => ({
     enabled: true,
@@ -680,7 +680,7 @@ test("GOTO reports the target song from progress zero and waits for realtime con
     displayList: ["old-song", "123456"],
     randomList: [],
     playMode: "ORDER_LOOP",
-    versions: [{ userId: "cove-account", version: 1 }],
+    versions: [{ userId: "test-account", version: 1 }],
   });
   internals.client.reportPlaybackCommand = async (input) => {
     reported.push({ ...input });
@@ -718,7 +718,7 @@ test("GOTO reports the target song from progress zero and waits for realtime con
     playStatus: "PLAY",
     receivedAtMs: Date.now(),
     clientSeq: 1,
-    senderId: "cove-account",
+    senderId: "test-account",
   });
 
   const result = await control;
@@ -805,7 +805,7 @@ test("NEXT resolves the following ORDER_LOOP displayList song and confirms via G
   internals.lastPlaybackServerSeq = 400;
   internals.previousSongId = "22";
   internals.previousPlayStatus = "PLAY";
-  internals.status.accountId = "cove-account";
+  internals.status.accountId = "test-account";
   internals.status.playStatus = "PLAY";
   internals.realtime.getStatus = () => ({
     enabled: true,
@@ -853,7 +853,7 @@ test("NEXT resolves the following ORDER_LOOP displayList song and confirms via G
     playStatus: "PLAY",
     receivedAtMs: Date.now(),
     clientSeq: 1,
-    senderId: "cove-account",
+    senderId: "test-account",
   });
 
   const result = await control;
@@ -909,7 +909,7 @@ test("ENQUEUE_NEXT rewrites ORDER_LOOP displayList and confirms adjacency plus v
     progress: 10_000,
     serverSeq: 500,
   };
-  internals.status.accountId = "cove-account";
+  internals.status.accountId = "test-account";
 
   internals.client.getTogetherPlaylist = async () => {
     playlistReads += 1;
@@ -918,14 +918,14 @@ test("ENQUEUE_NEXT rewrites ORDER_LOOP displayList and confirms adjacency plus v
         displayList: ["11", "22", "33", "44"],
         randomList: ["44", "11"],
         playMode: "ORDER_LOOP",
-        versions: [{ userId: "cove-account", version: 2 }],
+        versions: [{ userId: "test-account", version: 2 }],
       };
     }
     return {
       displayList: ["11", "22", "44", "33"],
       randomList: ["44", "11"],
       playMode: "ORDER_LOOP",
-      versions: [{ userId: "cove-account", version: 3 }],
+      versions: [{ userId: "test-account", version: 3 }],
     };
   };
   internals.client.replaceTogetherPlaylist = async (input) => {
@@ -940,7 +940,7 @@ test("ENQUEUE_NEXT rewrites ORDER_LOOP displayList and confirms adjacency plus v
 
   assert.equal(replacements.length, 1);
   assert.equal(replacements[0]?.roomId, "room");
-  assert.equal(replacements[0]?.userId, "cove-account");
+  assert.equal(replacements[0]?.userId, "test-account");
   assert.equal(replacements[0]?.version, 3);
   assert.deepEqual(replacements[0]?.displayList, ["11", "22", "44", "33"]);
   assert.deepEqual(replacements[0]?.randomList, ["44", "11"]);

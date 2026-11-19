@@ -24,7 +24,7 @@ test("NetEase ChatRoom event carries explicit source and required route semantic
   assert.match(event.modelContext, /source=netease\.chatroom/);
   assert.match(event.modelContext, /replyRoute=netease\.chatroom/);
   assert.match(event.modelContext, /replyPolicy=required/);
-  assert.match(event.modelContext, /must be routed back to NetEase ChatRoom through cove_bridge_reply/);
+  assert.match(event.modelContext, /must be routed back to NetEase ChatRoom through resonance_bridge_reply/);
 });
 
 test("NetEase playback state is labeled as state and not direct user chat", async () => {
@@ -48,3 +48,4 @@ test("NetEase playback state is labeled as state and not direct user chat", asyn
   assert.match(event.modelContext, /MESSAGE ORIGIN: NetEase Listen Together state\/event stream/);
   assert.match(event.modelContext, /NOT a direct user chat message/);
 });
+

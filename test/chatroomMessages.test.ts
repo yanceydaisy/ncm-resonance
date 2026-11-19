@@ -41,9 +41,9 @@ test("returns null for an empty ChatRoom message", () => {
 
 
 test("builds ordinary ChatRoom text messages for sending", () => {
-  assert.deepEqual(buildRealtimeChatTextMessage("  hello Cove  ", "logical-room-1", "send-1"), {
+  assert.deepEqual(buildRealtimeChatTextMessage("  hello Companion  ", "logical-room-1", "send-1"), {
     msg_type_: 0,
-    msg_attach_: "hello Cove",
+    msg_attach_: "hello Companion",
     msg_body_: "",
     client_msg_id_: "send-1",
     sub_type_: 0,
@@ -73,12 +73,12 @@ test("rejects empty and oversized outgoing ChatRoom text", () => {
 test("builds ChatRoom enter profile from NetEase account display data", () => {
   assert.deepEqual(
     buildRealtimeChatRoomEnterInfo({
-      nick: "  Cove  ",
+      nick: "  Companion  ",
       avatar: "  https://example.invalid/avatar.jpg  ",
     }),
     {
       values_: {
-        nick: "Cove",
+        nick: "Companion",
         avatar: "https://example.invalid/avatar.jpg",
       },
     },
@@ -91,7 +91,7 @@ test("includes minimal Listen Together sender identity in serverExt", () => {
     "hello",
     "room-1",
     "12345678-1234-1234-1234-123456789abc",
-    { userId: "12345678901", nick: "Cove", avatar: "https://example.invalid/a.jpg", gender: 1 },
+    { userId: "12345678901", nick: "Companion", avatar: "https://example.invalid/a.jpg", gender: 1 },
   );
   const setting = message.msg_setting_ as Record<string, unknown>;
   const ext = JSON.parse(String(setting.ext_)) as Record<string, unknown>;
@@ -103,9 +103,10 @@ test("includes minimal Listen Together sender identity in serverExt", () => {
     msgIdType: typeof (ext.serverExt as Record<string, unknown>).msgId,
   } : null, {
     userId: 12345678901,
-    nickname: "Cove",
+    nickname: "Companion",
     avatarUrl: "https://example.invalid/a.jpg",
     gender: 1,
     msgIdType: "number",
   });
 });
+

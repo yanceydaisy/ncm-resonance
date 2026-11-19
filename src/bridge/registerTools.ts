@@ -14,10 +14,10 @@ export function registerBridgeTools(
   togetherWorker: TogetherWorker,
 ): void {
   server.registerTool(
-    "cove_bridge_reply",
+    "resonance_bridge_reply",
     {
-      title: "Reply through Cove Bridge",
-      description: "Deliver the user-facing reply for the active Cove Bridge event back through its recorded reply route. For replyPolicy=required, call this exactly once before completing the turn. eventId is optional because the Bridge binds to the active required event and corrects stale ids. For normal conversation, messages[] should contain 2-5 short natural bubbles; a single bubble is only for a genuinely brief reply. Do not pack multiple sentences into one long bubble and do not add filler just to increase the count. The Bridge will also split an obviously long single bubble as a fallback. Do not call netease_together_send_message directly for routed replies.",
+      title: "Reply through Resonance Bridge",
+      description: "Deliver the user-facing reply for the active Resonance Bridge event back through its recorded reply route. For replyPolicy=required, call this exactly once before completing the turn. eventId is optional because the Bridge binds to the active required event and corrects stale ids. For normal conversation, messages[] should contain 2-5 short natural bubbles; a single bubble is only for a genuinely brief reply. Do not pack multiple sentences into one long bubble and do not add filler just to increase the count. The Bridge will also split an obviously long single bubble as a fallback. Do not call netease_together_send_message directly for routed replies.",
       inputSchema: {
         eventId: z.string().trim().min(1).optional(),
         messages: z.array(z.string().trim().min(1).max(500)).min(1).max(5),
@@ -44,14 +44,14 @@ export function registerBridgeTools(
       const event = outstanding ?? requested;
       if (!event) {
         throw new Error(eventId
-          ? `Unknown Cove Bridge event: ${eventId}`
-          : "No active Cove Bridge event is awaiting a routed reply.");
+          ? `Unknown Resonance Bridge event: ${eventId}`
+          : "No active Resonance Bridge event is awaiting a routed reply.");
       }
 
       const resolvedEventId = event.id;
       if (eventId && eventId !== resolvedEventId) {
         console.warn(
-          `Cove Bridge reply eventId corrected: requested=${eventId} resolved=${resolvedEventId}`,
+          `Resonance Bridge reply eventId corrected: requested=${eventId} resolved=${resolvedEventId}`,
         );
       }
       if (!event.replyRoute) throw new Error(`Event has no reply route: ${resolvedEventId}`);
@@ -74,10 +74,10 @@ export function registerBridgeTools(
   registerReplyRecoveryTool(server, queue, eventFilter);
 
   server.registerTool(
-    "cove_bridge_sync",
+    "resonance_bridge_sync",
     {
-      title: "Cove Bridge sync",
-      description: "Reserve one pending test event for the Cove Bridge component.",
+      title: "Resonance Bridge sync",
+      description: "Reserve one pending test event for the Resonance Bridge component.",
       inputSchema: {},
       outputSchema: {
         hasEvent: z.boolean(),
@@ -108,7 +108,7 @@ export function registerBridgeTools(
       const event = outstanding ?? queue.getReservedEvent(eventFilter) ?? queue.reserveNext(eventFilter);
       if (!event) return { structuredContent: { hasEvent: false }, content: [] };
       console.log(
-        `Cove Bridge event reserved: eventId=${event.id} stream=${event.stream} source=${event.source} replyPolicy=${event.replyPolicy ?? "none"}`,
+        `Resonance Bridge event reserved: eventId=${event.id} stream=${event.stream} source=${event.source} replyPolicy=${event.replyPolicy ?? "none"}`,
       );
       return {
         structuredContent: { hasEvent: true, eventId: event.id, awaitingReply: false },
@@ -119,9 +119,9 @@ export function registerBridgeTools(
   );
 
   server.registerTool(
-    "cove_bridge_delivered",
+    "resonance_bridge_delivered",
     {
-      title: "Cove Bridge delivered",
+      title: "Resonance Bridge delivered",
       description: "Mark a reserved event as accepted by the chat host.",
       inputSchema: { eventId: z.string().min(1) },
       outputSchema: { delivered: z.boolean() },
@@ -140,9 +140,9 @@ export function registerBridgeTools(
   );
 
   server.registerTool(
-    "cove_bridge_dismissed",
+    "resonance_bridge_dismissed",
     {
-      title: "Cove Bridge dismissed",
+      title: "Resonance Bridge dismissed",
       description: "Mark a reserved event as terminal after the user or host dismisses the app-initiated message prompt. Required-reply backpressure is completed without sending a routed reply.",
       inputSchema: { eventId: z.string().min(1) },
       outputSchema: { dismissed: z.boolean() },
@@ -162,9 +162,9 @@ export function registerBridgeTools(
   );
 
   server.registerTool(
-    "cove_bridge_release",
+    "resonance_bridge_release",
     {
-      title: "Cove Bridge release",
+      title: "Resonance Bridge release",
       description: "Release a reserved event only when host dispatch failed before ui/message was handed off.",
       inputSchema: { eventId: z.string().min(1) },
       outputSchema: { released: z.boolean() },
@@ -192,11 +192,11 @@ export function registerReplyRecoveryTool(
   automaticReplies = false,
 ): void {
   server.registerTool(
-    "cove_bridge_recover_reply",
+    "resonance_bridge_recover_reply",
     {
       title: "Resolve an uncertain reply receipt",
       description: "Resolve the last bubble of an interrupted routed reply only after the owner explicitly verifies in the destination app whether that bubble arrived. Never guess or call automatically. This records the owner's verification without sending a message. "
-        + (automaticReplies ? "The automatic scheduler resumes delivery from the saved progress." : "Resume using cove_bridge_reply with the returned saved messages."),
+        + (automaticReplies ? "The automatic scheduler resumes delivery from the saved progress." : "Resume using resonance_bridge_reply with the returned saved messages."),
       inputSchema: { eventId: z.string().min(1), lastBubbleDelivered: z.boolean() },
       outputSchema: { eventId: z.string(), sentCount: z.number(), messages: z.array(z.string()) },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false },

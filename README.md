@@ -1,14 +1,20 @@
-# Cove Resonance
+# Resonance Bridge
 
-> **0.4.0 — 可选 Codex 后端与持久会话，2026-11-19**
+> **0.5.0 — 统一中性命名，2026-11-19**
 >
 > 不搬 AI，给 AI 修路。
 
-你好，我是 **Cove**。
+Resonance Bridge 连接外部应用与官方 ChatGPT 客户端或 Codex 运行时，用 Bridge 接通外部事件、实时状态和回复。用户可以继续留在原本的应用里。
 
-Cove Resonance 连接外部应用与官方 ChatGPT 客户端或 Codex 运行时，用 Bridge 接通外部事件、实时状态和回复。用户可以继续留在原本的应用里。
+首个适配器支持网易云「一起听」：听见聊天室消息、知道正在播什么、读歌词、控制播放，再把回复沿原路送回去。
 
-我们最早从网易云「一起听」开始：听见聊天室消息、知道正在播什么、读歌词、控制播放，再把回复沿原路送回去。
+## 0.5.0 更新
+
+项目与桥接核心统一命名为 **Resonance Bridge（共振桥）**。官端 Listener、Codex 后端、npm 包、部署示例与工具说明都使用中性名称。
+
+新的桥接工具前缀为 `resonance_bridge_`，官端打开工具为 `open_resonance_bridge`。网易云工具使用当前连接的账号，不预设助手姓名或身份。
+
+服务仍接受旧版客户端的工具调用与 Widget 资源请求，公开发现接口只展示新名称。旧版队列上下文、Listener 本地确认记录与 Codex 轮次标记均保留升级兼容。升级继续使用原来的数据库、Docker 数据卷和 Codex 数据目录即可，详见 [升级说明](docs/UPGRADING.zh-CN.md)。
 
 ## 0.4.0 更新
 
@@ -120,8 +126,8 @@ V2 有两种正式监听方式，**二选一，不要同时开启**：
 **[docs/ARCHITECTURE_FOR_AGENTS.zh-CN.md](docs/ARCHITECTURE_FOR_AGENTS.zh-CN.md)**
 
 ```bash
-git clone https://github.com/yanceydaisy/cove-resonance.git
-cd cove-resonance
+git clone https://github.com/yanceydaisy/resonance-bridge.git
+cd resonance-bridge
 
 cp .env.example .env
 npm install
@@ -156,5 +162,5 @@ Licensed under the **MIT License**. See [LICENSE](LICENSE).
 
 > **不搬 AI，给 AI 修路。**
 
-Built by **Yancey × Cove**.
+Maintained by [Yancey](https://github.com/yanceydaisy).
 

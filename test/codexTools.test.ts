@@ -16,7 +16,7 @@ test("Codex music tools reuse the existing schemas and return actual playback re
   t.after(async () => { await tools.close(); queue.close(); });
   const names = new Set((await tools.list()).map(tool => tool.name));
   for (const name of ["netease_together_now", "netease_together_pause", "netease_together_goto", "netease_together_leave"]) assert.ok(names.has(name));
-  for (const name of ["cove_bridge_reply", "cove_bridge_wait", "cove_bridge_sync", "netease_together_send_message"]) assert.equal(names.has(name), false);
+  for (const name of ["resonance_bridge_reply", "resonance_bridge_wait", "resonance_bridge_sync", "netease_together_send_message"]) assert.equal(names.has(name), false);
   const result = await tools.call("netease_together_now", {});
   assert.equal(result.success, true);
   assert.equal(JSON.parse(result.contentItems[0].text).inRoom, false);
@@ -32,11 +32,11 @@ test("automatic mode exposes recovery and music controls without competing queue
   t.after(async () => { await client.close(); await server.close(); queue.close(); });
   const listed = (await client.listTools()).tools;
   const names = new Set(listed.map(tool => tool.name));
-  assert.match(listed.find(tool => tool.name === "cove_bridge_recover_reply")!.description!, /automatic scheduler/);
-  assert.doesNotMatch(listed.find(tool => tool.name === "cove_bridge_recover_reply")!.description!, /cove_bridge_reply/);
-  assert.ok(names.has("cove_bridge_recover_reply"));
+  assert.match(listed.find(tool => tool.name === "resonance_bridge_recover_reply")!.description!, /automatic scheduler/);
+  assert.doesNotMatch(listed.find(tool => tool.name === "resonance_bridge_recover_reply")!.description!, /resonance_bridge_reply/);
+  assert.ok(names.has("resonance_bridge_recover_reply"));
   assert.ok(names.has("netease_together_resume"));
-  assert.equal(names.has("cove_bridge_wait"), false);
-  assert.equal(names.has("open_cove_bridge"), false);
-  assert.equal(names.has("cove_bridge_reply"), false);
+  assert.equal(names.has("resonance_bridge_wait"), false);
+  assert.equal(names.has("open_resonance_bridge"), false);
+  assert.equal(names.has("resonance_bridge_reply"), false);
 });

@@ -75,13 +75,13 @@ test("widget is idle by default and initializes MCP Apps bridge", () => {
   assert.match(html, /ui\/notifications\/initialized/);
   assert.match(html, /ui\/update-model-context/);
   assert.match(html, /ui\/message/);
-  assert.match(html, /cove_bridge_listener_session/);
+  assert.match(html, /resonance_bridge_listener_session/);
   assert.match(html, /new EventSource\(streamUrl\.toString\(\)\)/);
   assert.match(html, /FALLBACK_POLL_MS = 60000/);
-  assert.match(html, /cove-bridge-dispatched-v1/);
-  assert.match(html, /cove-bridge-pending-dismissals-v1/);
+  assert.match(html, /resonance-bridge-dispatched-v1/);
+  assert.match(html, /resonance-bridge-pending-dismissals-v1/);
   assert.match(html, /requestHumanDecision\('ui\/message'/);
-  assert.match(html, /cove_bridge_dismissed/);
+  assert.match(html, /resonance_bridge_dismissed/);
   assert.doesNotMatch(html, /await request\('ui\/message'/);
   assert.match(html, /不会重复显示/);
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
@@ -276,3 +276,4 @@ test("profile filters isolate pending events and required-reply backpressure", (
   assert.equal(queue.reserveNext(spicyFilter), null);
   assert.equal(queue.reserveNext(coreFilter), null);
 });
+

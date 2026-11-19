@@ -13,10 +13,10 @@ export type CodexToolResult = { success: boolean; contentItems: Array<{ type: "i
 export type CodexTools = { list(): Promise<CodexTool[]>; call(name: string, args: Record<string, unknown>): Promise<CodexToolResult> };
 
 export async function createCodexTools(queue: SqliteEventQueue, worker: TogetherWorker, playback: PlaybackStateStore) {
-  const server = new McpServer({ name: "cove-resonance-codex-tools", version: "0.4.0" });
+  const server = new McpServer({ name: "resonance-bridge-codex-tools", version: "0.5.0" });
   registerNeteaseAccountTools(server, new NeteaseClient(process.env.NETEASE_COOKIE?.trim() ?? ""));
   registerNeteaseTogetherTools(server, playback, worker, queue, () => true, { automaticReplies: true });
-  const client = new Client({ name: "cove-resonance-codex", version: "0.4.0" });
+  const client = new Client({ name: "resonance-bridge-codex", version: "0.5.0" });
   const [incoming, outgoing] = InMemoryTransport.createLinkedPair();
   await server.connect(incoming);
   await client.connect(outgoing);

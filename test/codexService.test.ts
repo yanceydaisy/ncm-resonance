@@ -52,7 +52,7 @@ test("Codex reply generation and native delivery complete once through the durab
   assert.equal(f.service.store.get("first")?.phase, "done");
   assert.match(f.generations[0].text, /latest playback data/);
   assert.match(f.generations[0].text, /captured lyrics/);
-  assert.doesNotMatch(f.generations[0].text, /call cove_bridge_reply exactly once/);
+  assert.doesNotMatch(f.generations[0].text, /call resonance_bridge_reply exactly once/);
 });
 
 test("reopening Together with the same peer reuses its persistent Codex thread", async t => {

@@ -9,11 +9,11 @@
 Docker 需要保留数据目录，例如使用命名卷。
 
 ```bash
-docker volume create cove-resonance-data
+docker volume create resonance-bridge-data
 docker run --env-file .env \
   -e BRIDGE_DB_PATH=/app/data/bridge.sqlite \
-  -v cove-resonance-data:/app/data \
-  -p 8787:8787 cove-resonance
+  -v resonance-bridge-data:/app/data \
+  -p 8787:8787 resonance-bridge
 ```
 
 数据库包含聊天与模型上下文，应按私人数据保存。备份时可以先停止服务再复制数据库，或通过 SQLite 在线备份接口生成一致快照。WAL 模式下，运行中的数据库可能同时使用 `-wal` 与 `-shm` 文件。
@@ -38,7 +38,7 @@ docker run --env-file .env \
 
 ```json
 {
-  "name": "cove_bridge_recover_reply",
+  "name": "resonance_bridge_recover_reply",
   "arguments": {
     "eventId": "原事件 ID",
     "lastBubbleDelivered": true
@@ -48,7 +48,7 @@ docker run --env-file .env \
 
 `true` 表示已确认最后一条到达，会推进发送进度。`false` 表示已确认该条没有到达，会允许继续发送该条。该工具只记录核实结果。
 
-恢复结果返回保存的 `messages`。之后将同一组文字传给 `cove_bridge_reply`，系统会从确认后的进度继续。Long-wait 的 `awaitingReply` 结果也包含 `replyMessages`、`sentCount` 和 `deliveryUncertain`。
+恢复结果返回保存的 `messages`。之后将同一组文字传给 `resonance_bridge_reply`，系统会从确认后的进度继续。Long-wait 的 `awaitingReply` 结果也包含 `replyMessages`、`sentCount` 和 `deliveryUncertain`。
 
 ## 验证范围
 

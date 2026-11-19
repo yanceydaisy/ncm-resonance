@@ -117,9 +117,9 @@ export function registerNeteaseTogetherTools(
     {
       title: "Leave NetEase Together",
       description:
-        "End Cove's current NetEase Listen Together room, confirm authoritative room exit, "
+        "End the connected account’s current NetEase Listen Together room, confirm authoritative room exit, "
         + "disconnect realtime state, and return the worker to waiting for invitations. "
-        + "If Cove is already out of Together, this is a confirmed no-op.",
+        + "If the connected account is already out of Together, this is a confirmed no-op.",
       inputSchema: {},
       outputSchema: {
         ok: z.literal(true),
@@ -161,7 +161,7 @@ export function registerNeteaseTogetherTools(
     "netease_together_pause",
     {
       title: "Pause NetEase Together playback",
-      description: "Pause the current NetEase Listen Together playback from Cove's account. Success is returned only after a matching NIM realtime confirmation is observed; an HTTP report alone is not treated as success.",
+      description: "Pause the current NetEase Listen Together playback from the connected account. Success is returned only after a matching NIM realtime confirmation is observed; an HTTP report alone is not treated as success.",
       inputSchema: {},
       outputSchema: playbackControlOutputSchema,
       annotations: {
@@ -184,7 +184,7 @@ export function registerNeteaseTogetherTools(
     "netease_together_resume",
     {
       title: "Resume NetEase Together playback",
-      description: "Resume the current NetEase Listen Together playback from Cove's account. Success is returned only after a matching NIM realtime confirmation is observed; an HTTP report alone is not treated as success.",
+      description: "Resume the current NetEase Listen Together playback from the connected account. Success is returned only after a matching NIM realtime confirmation is observed; an HTTP report alone is not treated as success.",
       inputSchema: {},
       outputSchema: playbackControlOutputSchema,
       annotations: {
@@ -266,7 +266,7 @@ export function registerNeteaseTogetherTools(
     "netease_together_enqueue_next",
     {
       title: "Enqueue a NetEase Together song next",
-      description: "Move or insert a numeric songId immediately after the currently playing song in the ORDER_LOOP displayList. Uses the documented REPLACE queue command and returns success only after authoritative playlist reread confirms both adjacency and Cove's queue version.",
+      description: "Move or insert a numeric songId immediately after the currently playing song in the ORDER_LOOP displayList. Uses the documented REPLACE queue command and returns success only after authoritative playlist reread confirms both adjacency and the connected account’s queue version.",
       inputSchema: {
         songId: z.string().trim().regex(/^\d+$/),
       },
@@ -293,7 +293,7 @@ export function registerNeteaseTogetherTools(
     "netease_together_send_message",
     {
       title: "Send NetEase Together room message",
-      description: "Send one ordinary text message from Cove's NetEase account to the currently connected Listen Together ChatRoom. This is primarily for manual/proactive sends. If a required Cove Bridge reply is currently outstanding, the Bridge will automatically bind this send to that event and complete its reply route so the listener cannot deadlock.",
+      description: "Send one ordinary text message from the connected NetEase account to the currently connected Listen Together ChatRoom. This is primarily for manual/proactive sends. If a required Resonance Bridge reply is currently outstanding, the Bridge will automatically bind this send to that event and complete its reply route so the listener cannot deadlock.",
       inputSchema: { text: z.string().trim().min(1).max(500) },
       outputSchema: {
         ok: z.literal(true),
@@ -359,7 +359,7 @@ export function registerNeteaseTogetherTools(
         queue.markReplyCompleted(outstanding.id, fingerprint);
         listenerWakeHub.wake("reply-completed");
         console.warn(
-          `Cove Bridge compatibility route completed via netease_together_send_message: eventId=${outstanding.id} messages=${bubbles.length}`,
+          `Resonance Bridge compatibility route completed via netease_together_send_message: eventId=${outstanding.id} messages=${bubbles.length}`,
         );
         return {
           structuredContent: result,

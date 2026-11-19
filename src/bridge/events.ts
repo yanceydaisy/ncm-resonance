@@ -34,8 +34,8 @@ export function buildBridgeEvent(
         "replyRoute=" + routing.replyRoute,
         "replyPolicy=" + (routing.replyPolicy ?? "optional"),
         routing.replyPolicy === "required"
-          ? "ROUTING CONTRACT (mandatory): before completing this turn, call cove_bridge_reply exactly once and put the complete user-facing reply in messages[]. A reply shown only in ChatGPT is incomplete because the user is waiting in NetEase ChatRoom. For normal conversation, default to 2-5 short natural bubbles; use one bubble only for a genuinely brief reply. Do not pack a multi-sentence reply into one bubble, and do not invent filler merely to increase the count. eventId may be omitted because the Bridge binds to the active required event. Do not use netease_together_send_message directly."
-          : "ROUTING CONTRACT (optional): if you choose to send a user-facing reaction for this event, deliver it through cove_bridge_reply using this exact eventId. If no reaction is useful, do not call the reply tool.",
+          ? "ROUTING CONTRACT (mandatory): before completing this turn, call resonance_bridge_reply exactly once and put the complete user-facing reply in messages[]. A reply shown only in ChatGPT is incomplete because the user is waiting in NetEase ChatRoom. For normal conversation, default to 2-5 short natural bubbles; use one bubble only for a genuinely brief reply. Do not pack a multi-sentence reply into one bubble, and do not invent filler merely to increase the count. eventId may be omitted because the Bridge binds to the active required event. Do not use netease_together_send_message directly."
+          : "ROUTING CONTRACT (optional): if you choose to send a user-facing reaction for this event, deliver it through resonance_bridge_reply using this exact eventId. If no reaction is useful, do not call the reply tool.",
       ]
     : [];
 
@@ -44,7 +44,7 @@ export function buildBridgeEvent(
         "MESSAGE ORIGIN: NetEase ChatRoom.",
         "The human typed this message inside NetEase Cloud Music, NOT in the ChatGPT conversation window.",
         "Treat the bridged text as the current foreground user message from NetEase.",
-        "Any user-facing answer to this turn must be routed back to NetEase ChatRoom through cove_bridge_reply before the turn is complete.",
+        "Any user-facing answer to this turn must be routed back to NetEase ChatRoom through resonance_bridge_reply before the turn is complete.",
       ]
     : source.startsWith("netease.")
       ? [
@@ -52,7 +52,7 @@ export function buildBridgeEvent(
           "This is NOT a direct user chat message. Do not confuse it with something the human typed in ChatGPT or NetEase ChatRoom.",
         ]
       : [
-          "This message entered through Cove Bridge.",
+          "This message entered through Resonance Bridge.",
           "Treat the visible text as the current foreground user message.",
         ];
 

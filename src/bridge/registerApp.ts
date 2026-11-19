@@ -4,7 +4,7 @@ import { z } from "zod";
 import { buildListenerHtml } from "../listener-html.js";
 import { listenerWakeHub } from "../listenerWake.js";
 
-export const RESOURCE_URI = "ui://widget/cove-bridge.html";
+export const RESOURCE_URI = "ui://widget/resonance-bridge.html";
 const PUBLIC_ORIGIN = process.env.BRIDGE_PUBLIC_ORIGIN?.trim()
   || "http://localhost:" + (process.env.PORT ?? "8787");
 
@@ -13,7 +13,7 @@ export function registerBridgeApp(server: McpServer): void {
 
   registerAppResource(
     server,
-    "cove-bridge-widget",
+    "resonance-bridge-widget",
     RESOURCE_URI,
     {},
     async () => ({
@@ -27,7 +27,7 @@ export function registerBridgeApp(server: McpServer): void {
             prefersBorder: false,
             csp: { connectDomains: [PUBLIC_ORIGIN], resourceDomains: [] },
           },
-          "openai/widgetDescription": "A manually controlled listener for Cove Resonance events.",
+          "openai/widgetDescription": "A manually controlled listener for Resonance Bridge events.",
         },
       }],
     }),
@@ -35,10 +35,10 @@ export function registerBridgeApp(server: McpServer): void {
 
   registerAppTool(
     server,
-    "open_cove_bridge",
+    "open_resonance_bridge",
     {
-      title: "Open Cove Resonance",
-      description: "Mount the Cove Resonance listener component in an idle state. Only use when the user explicitly asks to open it. Opening does not start listening; the user starts listening from the component.",
+      title: "Open Resonance Bridge",
+      description: "Mount the Resonance Bridge listener component in an idle state. Only use when the user explicitly asks to open it. Opening does not start listening; the user starts listening from the component.",
       inputSchema: {},
       outputSchema: { ready: z.boolean(), listening: z.boolean() },
       annotations: {
@@ -53,15 +53,15 @@ export function registerBridgeApp(server: McpServer): void {
     },
     async () => ({
       structuredContent: { ready: true, listening: false },
-      content: [{ type: "text", text: "Cove Resonance mounted in an idle state. Listening has not started." }],
+      content: [{ type: "text", text: "Resonance Bridge mounted in an idle state. Listening has not started." }],
     }),
   );
 
   server.registerTool(
-    "cove_bridge_listener_session",
+    "resonance_bridge_listener_session",
     {
-      title: "Cove Resonance listener session",
-      description: "Create a short-lived, single-use authorization token for the Cove Resonance wake stream. App-only.",
+      title: "Resonance Bridge listener session",
+      description: "Create a short-lived, single-use authorization token for the Resonance Bridge wake stream. App-only.",
       inputSchema: {},
       outputSchema: {
         token: z.string(),
@@ -91,3 +91,4 @@ export function registerBridgeApp(server: McpServer): void {
     },
   );
 }
+

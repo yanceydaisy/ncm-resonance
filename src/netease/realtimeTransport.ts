@@ -512,7 +512,7 @@ export class NeteaseRealtimeTransport {
   ): Promise<[number, string]> {
     const dataDir = join(
       tmpdir(),
-      `cove-nim-bootstrap-${process.pid}-${randomUUID()}`,
+      `resonance-nim-bootstrap-${process.pid}-${randomUUID()}`,
     );
     const compiledModule = fileURLToPath(
       new URL("./nimTicketBootstrap.js", import.meta.url),

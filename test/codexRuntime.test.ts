@@ -90,3 +90,12 @@ test("native history recovery follows pagination when the saved turn ID is unava
   const recovered = await runtime.recover(threadId, "older-event", null);
   assert.deepEqual(JSON.parse(recovered!), { reply: "hello" });
 });
+
+test("renamed Codex jobs can recover an older event marker without generating another turn", async t => {
+  const { runtime, path } = fixture(t);
+  const threadId = await runtime.createThread();
+  await runtime.generate({ threadId, marker: "COVE_RESONANCE_EVENT legacy ATTEMPT 0", text: "hello", onStarted: () => {} });
+  const recovered = await runtime.recover(threadId, "RESONANCE_BRIDGE_EVENT legacy ATTEMPT 0", null);
+  assert.deepEqual(JSON.parse(recovered!), { reply: "hello" });
+  assert.equal(JSON.parse(readFileSync(path, "utf8")).turns, 1);
+});

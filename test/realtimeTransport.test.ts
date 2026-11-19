@@ -125,7 +125,7 @@ test("playback diagnostic only exposes whitelisted protocol fields", () => {
 
 test("decodes playback clientSeq and senderId for outbound confirmation", () => {
   const event = decodeRealtimePlaybackEvent({
-    from_id_: "cove-account",
+    from_id_: "test-account",
     msg_attach_: JSON.stringify({
       content: {
         type: 20_000,
@@ -145,7 +145,7 @@ test("decodes playback clientSeq and senderId for outbound confirmation", () => 
   }, 999);
 
   assert.equal(event?.clientSeq, 8);
-  assert.equal(event?.senderId, "cove-account");
+  assert.equal(event?.senderId, "test-account");
   assert.equal(event?.serverSeq, 123);
   assert.equal(event?.commandType, "PAUSE");
 });

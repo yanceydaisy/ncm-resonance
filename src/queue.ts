@@ -3,6 +3,7 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { BridgeEvent, ReplyDeliveryState, StoredBridgeEvent } from "./types.js";
+import { normalizeLegacyContext } from "./legacyNames.js";
 
 export type ReplyClaim =
   | { state: "send"; sentCount: number }
@@ -43,6 +44,11 @@ export class SqliteEventQueue {
 
   close(): void { this.db.close(); }
 
+  private readEvent(raw: string): BridgeEvent {
+    const event = JSON.parse(raw) as BridgeEvent;
+    return { ...event, modelContext: normalizeLegacyContext(event.modelContext) };
+  }
+
   private transaction<T>(operation: () => T): T {
     this.db.exec("BEGIN IMMEDIATE");
     try {
@@ -58,7 +64,7 @@ export class SqliteEventQueue {
   private row(eventId: string): StoredBridgeEvent | undefined {
     const row = this.db.prepare("SELECT event,status,reply FROM bridge_events WHERE id=?").get(eventId) as StoredRow | undefined;
     if (!row) return undefined;
-    return { event: JSON.parse(row.event), status: row.status, ...(row.reply ? { reply: JSON.parse(row.reply) } : {}) };
+    return { event: this.readEvent(row.event), status: row.status, ...(row.reply ? { reply: JSON.parse(row.reply) } : {}) };
   }
 
   private saveReply(eventId: string, reply: ReplyDeliveryState): void {
@@ -94,7 +100,7 @@ export class SqliteEventQueue {
   getPendingEvent(filter: (event: BridgeEvent) => boolean): BridgeEvent | null {
     const rows = this.db.prepare("SELECT event FROM bridge_events WHERE status='pending' ORDER BY sequence").all();
     for (const row of rows) {
-      const event: BridgeEvent = JSON.parse(String(row.event));
+      const event = this.readEvent(String(row.event));
       if (filter(event)) return event;
     }
     return null;
@@ -111,7 +117,7 @@ export class SqliteEventQueue {
         AND newer.stream='state' AND newer.sequence>reserved.sequence
       )) ORDER BY CASE stream WHEN 'conversation' THEN 0 ELSE 1 END, sequence`).all();
     for (const row of rows) {
-      const event: BridgeEvent = JSON.parse(String(row.event));
+      const event = this.readEvent(String(row.event));
       if (!filter || filter(event)) return event;
     }
     return null;
@@ -122,7 +128,7 @@ export class SqliteEventQueue {
       AND status IN ('reserved','delivered') AND json_extract(event,'$.replyPolicy')='required'
       AND (reply IS NULL OR json_extract(reply,'$.completed')=0) ORDER BY sequence`).all();
     for (const row of rows) {
-      const event: BridgeEvent = JSON.parse(String(row.event));
+      const event = this.readEvent(String(row.event));
       if (!filter || filter(event)) return event;
     }
     return null;
@@ -134,7 +140,7 @@ export class SqliteEventQueue {
       const rows = this.db.prepare(`SELECT event FROM bridge_events WHERE status='pending'
         ORDER BY CASE stream WHEN 'conversation' THEN 0 ELSE 1 END, sequence`).all();
       for (const row of rows) {
-        const event: BridgeEvent = JSON.parse(String(row.event));
+        const event = this.readEvent(String(row.event));
         if (filter && !filter(event)) continue;
         this.db.prepare("UPDATE bridge_events SET status='reserved' WHERE id=?").run(event.id);
         return event;
@@ -198,7 +204,7 @@ export class SqliteEventQueue {
       if (reply.completed) return { state: "already_completed", sentCount: reply.sentCount };
       if (reply.fingerprint !== fingerprint) throw new Error(`Event already has a different reply: ${eventId}`);
       if (reply.inFlight && reply.owner === PROCESS_OWNER) return { state: "in_progress", sentCount: reply.sentCount };
-      if (reply.sendingIndex !== undefined) throw new Error(`Reply delivery is uncertain; verify the last bubble and use cove_bridge_recover_reply: ${eventId}`);
+      if (reply.sendingIndex !== undefined) throw new Error(`Reply delivery is uncertain; verify the last bubble and use resonance_bridge_recover_reply: ${eventId}`);
       reply.inFlight = true;
       reply.owner = PROCESS_OWNER;
       this.saveReply(eventId, reply);

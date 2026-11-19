@@ -23,8 +23,8 @@ export function registerNeteaseAccountTools(server: McpServer, client: NeteaseCl
   server.registerTool(
     "netease_search_songs",
     {
-      title: "Search Cove's NetEase Music",
-      description: "Search NetEase Cloud Music songs using Cove's own NetEase account session.",
+      title: "Search NetEase Music",
+      description: "Search NetEase Cloud Music songs using the connected NetEase account session.",
       inputSchema: {
         query: z.string().trim().min(1).max(120),
         limit: z.number().int().min(1).max(20).default(10),
@@ -48,8 +48,8 @@ export function registerNeteaseAccountTools(server: McpServer, client: NeteaseCl
   server.registerTool(
     "netease_my_playlists",
     {
-      title: "Cove's NetEase playlists",
-      description: "List playlists visible on Cove's own NetEase account, including whether each playlist is owned by Cove.",
+      title: "NetEase playlists",
+      description: "List playlists visible on the connected NetEase account, including whether each playlist is owned by the connected account.",
       inputSchema: {
         limit: z.number().int().min(1).max(100).default(50),
       },
@@ -73,7 +73,7 @@ export function registerNeteaseAccountTools(server: McpServer, client: NeteaseCl
     "netease_playlist_tracks",
     {
       title: "NetEase playlist tracks",
-      description: "Read songs from a NetEase playlist using Cove's own account session.",
+      description: "Read songs from a NetEase playlist using the connected account session.",
       inputSchema: {
         playlistId: z.string().trim().min(1).max(40),
         limit: z.number().int().min(1).max(100).default(50),
@@ -97,8 +97,8 @@ export function registerNeteaseAccountTools(server: McpServer, client: NeteaseCl
   server.registerTool(
     "netease_create_playlist",
     {
-      title: "Create Cove's NetEase playlist",
-      description: "Create a real playlist on Cove's own NetEase account.",
+      title: "Create a NetEase playlist",
+      description: "Create a real playlist on the connected NetEase account.",
       inputSchema: {
         name: z.string().trim().min(1).max(80),
         privacy: z.enum(["public", "private"]).default("public"),
@@ -129,8 +129,8 @@ export function registerNeteaseAccountTools(server: McpServer, client: NeteaseCl
   server.registerTool(
     "netease_add_to_playlist",
     {
-      title: "Add songs to Cove's NetEase playlist",
-      description: "Add one or more songs to a real playlist on Cove's own NetEase account.",
+      title: "Add songs to a NetEase playlist",
+      description: "Add one or more songs to a real playlist on the connected NetEase account.",
       inputSchema: {
         playlistId: z.string().trim().min(1).max(40),
         songIds: z.array(z.string().trim().min(1).max(40)).min(1).max(50),
@@ -160,8 +160,8 @@ export function registerNeteaseAccountTools(server: McpServer, client: NeteaseCl
   server.registerTool(
     "netease_remove_from_playlist",
     {
-      title: "Remove songs from Cove's NetEase playlist",
-      description: "Remove one or more songs from a real playlist on Cove's own NetEase account.",
+      title: "Remove songs from a NetEase playlist",
+      description: "Remove one or more songs from a real playlist on the connected NetEase account.",
       inputSchema: {
         playlistId: z.string().trim().min(1).max(40),
         songIds: z.array(z.string().trim().min(1).max(40)).min(1).max(50),
@@ -191,8 +191,8 @@ export function registerNeteaseAccountTools(server: McpServer, client: NeteaseCl
   server.registerTool(
     "netease_like_song",
     {
-      title: "Set Cove's NetEase like state",
-      description: "Like or unlike a song on Cove's own NetEase account.",
+      title: "Set NetEase like state",
+      description: "Like or unlike a song on the connected NetEase account.",
       inputSchema: {
         songId: z.string().trim().min(1).max(40),
         like: z.boolean().default(true),
@@ -222,8 +222,8 @@ export function registerNeteaseAccountTools(server: McpServer, client: NeteaseCl
   server.registerTool(
     "netease_play_history",
     {
-      title: "Cove's NetEase play history",
-      description: "Read Cove's own NetEase listening history and play counts.",
+      title: "NetEase play history",
+      description: "Read listening history and play counts for the connected NetEase account.",
       inputSchema: {
         limit: z.number().int().min(1).max(100).default(30),
         allTime: z.boolean().default(false),
@@ -253,8 +253,8 @@ export function registerNeteaseAccountTools(server: McpServer, client: NeteaseCl
   server.registerTool(
     "netease_daily_recommend",
     {
-      title: "Cove's NetEase daily recommendations",
-      description: "Read today's personalized song recommendations for Cove's own NetEase account.",
+      title: "NetEase daily recommendations",
+      description: "Read today's personalized song recommendations for the connected NetEase account.",
       inputSchema: {
         limit: z.number().int().min(1).max(30).default(30),
       },
@@ -276,3 +276,4 @@ export function registerNeteaseAccountTools(server: McpServer, client: NeteaseCl
     },
   );
 }
+

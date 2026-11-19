@@ -22,7 +22,7 @@ async function withServer(run: (base: string) => Promise<void>): Promise<void> {
   }
 }
 
-async function rpc(base: string, path: string, id: number, method: string) {
+async function rpc(base: string, path: string, id: number, method: string, params: Record<string, unknown> = {}) {
   const response = await fetch(base + path, {
     method: "POST",
     headers: {
@@ -39,15 +39,17 @@ async function rpc(base: string, path: string, id: number, method: string) {
             capabilities: {},
             clientInfo: { name: "compat-test", version: "1.0.0" },
           }
-        : {},
+        : params,
     }),
   });
   assert.equal(response.status, 200, path + ":" + method);
   return await response.json() as {
     result?: {
       serverInfo?: { name?: string };
-      tools?: Array<{ name: string }>;
+      tools?: Array<{ name: string; title?: string; description?: string }>;
       resources?: Array<{ uri: string }>;
+      structuredContent?: { ready: boolean };
+      contents?: Array<{ uri: string; text?: string }>;
     };
   };
 }
@@ -56,8 +58,8 @@ test("legacy /mcp and scoped /mcp/music both initialize", async () => {
   await withServer(async (base) => {
     const legacy = await rpc(base, "/mcp", 1, "initialize");
     const music = await rpc(base, "/mcp/music", 2, "initialize");
-    assert.equal(legacy.result?.serverInfo?.name, "cove-resonance");
-    assert.equal(music.result?.serverInfo?.name, "cove-resonance-music");
+    assert.equal(legacy.result?.serverInfo?.name, "resonance-bridge");
+    assert.equal(music.result?.serverInfo?.name, "resonance-bridge-music");
   });
 });
 
@@ -72,15 +74,15 @@ test("legacy and scoped endpoints both keep the Music V2 tool surface", async ()
     "netease_together_next",
     "netease_together_enqueue_next",
     "netease_together_send_message",
-    "open_cove_bridge",
-    "cove_bridge_listener_session",
-    "cove_bridge_reply",
-    "cove_bridge_sync",
-    "cove_bridge_delivered",
-    "cove_bridge_dismissed",
-    "cove_bridge_release",
-    "cove_bridge_wait",
-    "cove_bridge_wait_ack",
+    "open_resonance_bridge",
+    "resonance_bridge_listener_session",
+    "resonance_bridge_reply",
+    "resonance_bridge_sync",
+    "resonance_bridge_delivered",
+    "resonance_bridge_dismissed",
+    "resonance_bridge_release",
+    "resonance_bridge_wait",
+    "resonance_bridge_wait_ack",
   ];
   await withServer(async (base) => {
     for (const path of ["/mcp", "/mcp/music"]) {
@@ -91,12 +93,29 @@ test("legacy and scoped endpoints both keep the Music V2 tool surface", async ()
   });
 });
 
-test("stable widget resource URI is preserved", async () => {
+test("widget discovery advertises the neutral resource URI", async () => {
   await withServer(async (base) => {
     for (const path of ["/mcp", "/mcp/music"]) {
       const body = await rpc(base, path, 4, "resources/list");
       const uris = new Set((body.result?.resources ?? []).map((resource) => resource.uri));
-      assert.equal(uris.has("ui://widget/cove-bridge.html"), true, path);
+      assert.equal(uris.has("ui://widget/resonance-bridge.html"), true, path);
     }
   });
 });
+
+test("discovery is neutral while already-mounted clients can use legacy calls", async () => {
+  await withServer(async base => {
+    for (const path of ["/mcp", "/mcp/music"]) {
+      const listed = await rpc(base, path, 5, "tools/list");
+      assert.doesNotMatch(JSON.stringify(listed.result?.tools), /\bcove\b|cove_/i);
+      const opened = await rpc(base, path, 6, "tools/call", { name: "open_cove_bridge", arguments: {} });
+      assert.equal(opened.result?.structuredContent?.ready, true);
+      const oldSync = await rpc(base, path, 7, "tools/call", { name: "cove_bridge_sync", arguments: {} });
+      assert.ok(oldSync.result);
+      const resource = await rpc(base, path, 8, "resources/read", { uri: "ui://widget/cove-bridge.html" });
+      assert.equal(resource.result?.contents?.[0]?.uri, "ui://widget/resonance-bridge.html");
+      assert.match(resource.result?.contents?.[0]?.text ?? "", /<title>Resonance Bridge<\/title>/);
+    }
+  });
+});
+

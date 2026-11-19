@@ -16,6 +16,7 @@ import type { BridgeEvent } from "./types.js";
 import { createCodexTools } from "./codex/tools.js";
 import { CodexRuntime } from "./codex/runtime.js";
 import { CodexService } from "./codex/service.js";
+import { normalizeLegacyRequest } from "./legacyNames.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const INGEST_TOKEN = process.env.BRIDGE_INGEST_TOKEN ?? "";
@@ -133,8 +134,8 @@ export function createHttpServer() {
     if (req.method === "GET" && url.pathname === "/") {
       writeJson(res, 200, {
         ok: true,
-        service: "cove-bridge",
-        version: "0.4.0",
+        service: "resonance-bridge",
+        version: "0.5.0",
         backend: AI_BACKEND,
         codex: AI_BACKEND === "codex" ? { busy: codex?.status().busy ?? false, error: codexStartupError } : undefined,
         queue: queue.status(),
@@ -220,6 +221,8 @@ export function createHttpServer() {
       });
       try {
         await server.connect(transport);
+        const onmessage = transport.onmessage;
+        transport.onmessage = (message, extra) => onmessage?.(normalizeLegacyRequest(message), extra);
         await transport.handleRequest(req, res);
       } catch (error) {
         console.error("MCP request failed", error);
@@ -235,7 +238,7 @@ export function createHttpServer() {
 if (process.env.NODE_ENV !== "test") {
   const servers = [createHttpServer()];
   servers[0].listen(PORT, "0.0.0.0", () => {
-    console.log("Cove Resonance listening on http://0.0.0.0:" + PORT + " (MCP: /mcp, /mcp/music)");
+    console.log("Resonance Bridge listening on http://0.0.0.0:" + PORT + " (MCP: /mcp, /mcp/music)");
     if (AI_BACKEND === "codex") void startCodex();
     togetherWorker.start();
   });
@@ -246,7 +249,7 @@ if (process.env.NODE_ENV !== "test") {
     servers.push(unixServer);
     unixServer.listen(UNIX_SOCKET, () => {
       chmodSync(UNIX_SOCKET, 0o666);
-      console.log("Cove Resonance listening on unix://" + UNIX_SOCKET + " (MCP: /mcp, /mcp/music)");
+      console.log("Resonance Bridge listening on unix://" + UNIX_SOCKET + " (MCP: /mcp, /mcp/music)");
     });
   }
 

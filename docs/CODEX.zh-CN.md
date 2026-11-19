@@ -43,19 +43,19 @@ npm start
 构建带有 Codex CLI 的镜像，并保留 Bridge 与 Codex 两份数据目录。
 
 ```bash
-docker build --build-arg INSTALL_CODEX=true -t cove-resonance .
-docker volume create cove-resonance-data
-docker volume create cove-resonance-codex
+docker build --build-arg INSTALL_CODEX=true -t resonance-bridge .
+docker volume create resonance-bridge-data
+docker volume create resonance-bridge-codex
 
-docker run -d --name cove-resonance --env-file .env \
+docker run -d --name resonance-bridge --env-file .env \
   -e BRIDGE_AI_BACKEND=codex \
   -e BRIDGE_DB_PATH=/app/data/bridge.sqlite \
   -e CODEX_WORKSPACE=/app/data/codex-workspace \
-  -v cove-resonance-data:/app/data \
-  -v cove-resonance-codex:/root/.codex \
-  -p 8787:8787 cove-resonance
+  -v resonance-bridge-data:/app/data \
+  -v resonance-bridge-codex:/root/.codex \
+  -p 8787:8787 resonance-bridge
 
-docker exec -it cove-resonance codex login --device-auth
+docker exec -it resonance-bridge codex login --device-auth
 ```
 
 如果指令文件位于容器外，挂载该文件并将 `CODEX_INSTRUCTIONS_FILE` 指向容器中的路径。
@@ -76,7 +76,7 @@ Codex 自身保存原生历史。备份时同时保存 Bridge 数据库与 Codex
 
 Codex 的动态工具复用网易云 MCP 的 schema、校验与实现。包括歌曲搜索、歌单、喜欢、当前播放信息与已确认的播放控制。最终回复由应用统一回传，工具过程留在运行时。
 
-选择 Codex 模式后，公开 `/mcp` 与 `/mcp/music` 提供音乐控制及 `cove_bridge_recover_reply`。事件由自动调度器消费。
+选择 Codex 模式后，公开 `/mcp` 与 `/mcp/music` 提供音乐控制及 `resonance_bridge_recover_reply`。事件由自动调度器消费。
 
 ## 状态与失败恢复
 

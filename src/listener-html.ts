@@ -6,7 +6,7 @@ export function buildListenerHtml(): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Cove Bridge</title>
+<title>Resonance Bridge</title>
 <style>
   :root{color-scheme:light dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}
   *{box-sizing:border-box}
@@ -19,7 +19,7 @@ export function buildListenerHtml(): string {
 </head>
 <body>
 <main class="card">
-  <div class="title">Cove Bridge</div>
+  <div class="title">Resonance Bridge</div>
   <div id="status" class="status">已挂载，尚未监听。</div>
   <button id="toggle" type="button" disabled>正在连接…</button>
 </main>
@@ -35,9 +35,9 @@ export function buildListenerHtml(): string {
   let streamAbort = null;
   let streamGeneration = 0;
   let sseConnected = false;
-  const DISPATCHED_STORAGE_KEY = 'cove-bridge-dispatched-v1';
-  const PENDING_ACK_STORAGE_KEY = 'cove-bridge-pending-acks-v1';
-  const PENDING_DISMISS_STORAGE_KEY = 'cove-bridge-pending-dismissals-v1';
+  const DISPATCHED_STORAGE_KEY = 'resonance-bridge-dispatched-v1';
+  const PENDING_ACK_STORAGE_KEY = 'resonance-bridge-pending-acks-v1';
+  const PENDING_DISMISS_STORAGE_KEY = 'resonance-bridge-pending-dismissals-v1';
   const MAX_RECENT_DISPATCHED = 128;
   const recentlyDispatched = new Set();
   const pendingAcks = new Set();
@@ -50,7 +50,18 @@ export function buildListenerHtml(): string {
   function readStoredIds(key) {
     try {
       const parsed = JSON.parse(localStorage.getItem(key) || '[]');
-      return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : [];
+      const ids = new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : []);
+      const legacyKey = key.replace(/^resonance-bridge-/, 'cove-bridge-');
+      const legacy = localStorage.getItem(legacyKey);
+      if (legacyKey !== key && legacy !== null) {
+        try {
+          const old = JSON.parse(legacy);
+          if (Array.isArray(old)) for (const id of old) if (typeof id === 'string') ids.add(id);
+        } catch {}
+        localStorage.setItem(key, JSON.stringify([...ids]));
+        localStorage.removeItem(legacyKey);
+      }
+      return [...ids];
     } catch {
       return [];
     }
@@ -100,7 +111,7 @@ export function buildListenerHtml(): string {
   async function flushPendingDismissals() {
     for (const eventId of [...pendingDismissals]) {
       try {
-        await callTool('cove_bridge_dismissed', { eventId });
+        await callTool('resonance_bridge_dismissed', { eventId });
         forgetPendingDismissal(eventId);
       } catch (error) {
         const message = error && error.message ? error.message : String(error);
@@ -117,7 +128,7 @@ export function buildListenerHtml(): string {
   async function flushPendingAcks() {
     for (const eventId of [...pendingAcks]) {
       try {
-        await callTool('cove_bridge_delivered', { eventId });
+        await callTool('resonance_bridge_delivered', { eventId });
         forgetPendingAck(eventId);
       } catch (error) {
         const message = error && error.message ? error.message : String(error);
@@ -180,7 +191,7 @@ export function buildListenerHtml(): string {
 
   async function initialize() {
     await request('ui/initialize', {
-      appInfo: { name: 'cove-bridge-widget', version: '0.1.0' },
+      appInfo: { name: 'resonance-bridge-widget', version: '0.1.0' },
       appCapabilities: {},
       protocolVersion: '2026-01-26'
     });
@@ -210,7 +221,7 @@ export function buildListenerHtml(): string {
 
     while (listening && generation === streamGeneration) {
       try {
-        const sessionResult = await callTool('cove_bridge_listener_session', {});
+        const sessionResult = await callTool('resonance_bridge_listener_session', {});
         const session = sessionResult && sessionResult.structuredContent;
         if (!session || !session.token || !session.streamUrl) {
           throw new Error('Bridge did not return a wake-stream session');
@@ -310,7 +321,7 @@ export function buildListenerHtml(): string {
         return;
       }
 
-      const result = await callTool('cove_bridge_sync', {});
+      const result = await callTool('resonance_bridge_sync', {});
       const event = result && result._meta && result._meta.event;
       if (!event) {
         const state = result && result.structuredContent;
@@ -341,7 +352,7 @@ export function buildListenerHtml(): string {
         dispatchResult = await dispatch(event);
       } catch (error) {
         // Only failures before ui/message handoff are safe to retry.
-        await callTool('cove_bridge_release', { eventId }).catch(() => {});
+        await callTool('resonance_bridge_release', { eventId }).catch(() => {});
         throw error;
       }
 
@@ -423,3 +434,4 @@ export function buildListenerHtml(): string {
 </body>
 </html>`;
 }
+
