@@ -7,6 +7,16 @@
 
 ---
 
+# 0.4.0 的 Codex Host Adapter
+
+`BRIDGE_AI_BACKEND=codex` 时，Bridge 调度器直接驱动官方 App Server，生成任务、会话绑定与发送回执写入同一份 SQLite。原生历史由 Codex 自己持久化。
+
+`src/codex/runtime.ts` 处理 stdio RPC、动态工具、轮次结束与历史读取，`store.ts` 保存生成任务与 thread 绑定，`service.ts` 负责队列、状态合并与返程。最终回复共用 `src/bridge/replyDelivery.ts` 的逐气泡日志。
+
+本模式的模型输入使用来源明确的消息、实时音乐快照与歌词数据，应用负责最终回传。公开 MCP 视图提供音乐控制和回执恢复。具体配置见 [Codex 后端说明](CODEX.zh-CN.md)。
+
+下文详细记录官端 Listener 的协议与公共队列不变量。
+
 # 0. 一句话设计
 
 Cove Resonance 不把 AI 搬进外部应用。

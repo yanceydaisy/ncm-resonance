@@ -8,7 +8,7 @@ If you are an AI coding agent, read this before changing the project.
 
 Cove Resonance bridges external realtime applications into an official AI client conversation without moving the model into a custom frontend.
 
-Current reference adapter:
+Default reference adapter:
 
 ```text
 NetEase Listen Together ChatRoom
@@ -18,6 +18,10 @@ NetEase Listen Together ChatRoom
 ```
 
 The NetEase adapter is not the architecture itself.
+
+The optional `BRIDGE_AI_BACKEND=codex` host adapter drives the official Codex app-server directly. It consumes the same durable queue and uses the same delivery journal. In this mode the public MCP view exposes music controls and reply recovery, while Codex owns event consumption and final reply delivery.
+
+Before changing that adapter, read `docs/CODEX.zh-CN.md`, `src/codex/runtime.ts`, `src/codex/store.ts`, `src/codex/service.ts`, and `src/bridge/replyDelivery.ts`. Preserve event-to-thread/turn bindings. Reconcile interrupted native history before considering another generation. An uncertain earlier turn requires an explicit retry decision.
 
 ## Required reading order
 
@@ -108,6 +112,16 @@ Implemented in 0.3.0 with automated restart and failure regression coverage:
 - worker lifecycle cancellation and native shutdown
 
 Read `docs/PERSISTENCE.zh-CN.md` before changing recovery behavior. Preserve an unresolved send marker until the destination result has been verified. Existing delivered host events stay delivered across restarts.
+
+Implemented in 0.4.0 with automated coverage:
+
+- optional standalone Codex backend and native stdio/dynamic-tool adapter
+- persistent peer/thread bindings and generation jobs in the same SQLite file
+- playback-state coalescing, silent reactions and human-message priority
+- shared per-bubble delivery and original-room validation
+- saved native-turn reconciliation before generation retry
+
+Live Codex CLI 0.165.0 checks verified tool calls, process restart with thread resume, and stored-result recovery. Real NetEase-room acceptance of this new host adapter remains a deployment check.
 
 Roadmap, not completed:
 - unattended listener watchdog

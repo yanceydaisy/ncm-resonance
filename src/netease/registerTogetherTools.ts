@@ -15,6 +15,7 @@ export function registerNeteaseTogetherTools(
   togetherWorker: TogetherWorker,
   queue: SqliteEventQueue,
   eventFilter: (event: BridgeEvent) => boolean,
+  options: { automaticReplies?: boolean } = {},
 ): void {
   server.registerTool(
     "netease_together_now",
@@ -285,6 +286,8 @@ export function registerNeteaseTogetherTools(
       };
     },
   );
+
+  if (options.automaticReplies) return;
 
   server.registerTool(
     "netease_together_send_message",

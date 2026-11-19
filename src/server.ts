@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, unlinkSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -13,12 +13,21 @@ import { PlaybackStateStore } from "./netease/playbackState.js";
 import { createTogetherWorker } from "./netease/togetherWorker.js";
 import { SqliteEventQueue } from "./queue.js";
 import type { BridgeEvent } from "./types.js";
+import { createCodexTools } from "./codex/tools.js";
+import { CodexRuntime } from "./codex/runtime.js";
+import { CodexService } from "./codex/service.js";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const INGEST_TOKEN = process.env.BRIDGE_INGEST_TOKEN ?? "";
 const UNIX_SOCKET = process.env.BRIDGE_UNIX_SOCKET?.trim() ?? "";
-const queue = new SqliteEventQueue(process.env.BRIDGE_DB_PATH?.trim()
-  || (process.env.NODE_ENV === "test" ? ":memory:" : resolve("data/bridge.sqlite")));
+const AI_BACKEND = process.env.BRIDGE_AI_BACKEND?.trim() || "chatgpt";
+if (AI_BACKEND !== "chatgpt" && AI_BACKEND !== "codex") throw new Error("BRIDGE_AI_BACKEND must be chatgpt or codex");
+const DB_PATH = process.env.BRIDGE_DB_PATH?.trim()
+  || (process.env.NODE_ENV === "test" ? ":memory:" : resolve("data/bridge.sqlite"));
+const queue = new SqliteEventQueue(DB_PATH);
+let codex: CodexService | undefined;
+let codexTools: Awaited<ReturnType<typeof createCodexTools>> | undefined;
+let codexStartupError: string | null = null;
 const playbackState = new PlaybackStateStore();
 
 function enqueueTogetherEvent(
@@ -27,26 +36,57 @@ function enqueueTogetherEvent(
   additionalModelContext?: string,
   eventId?: string,
   replyTarget?: BridgeEvent["replyTarget"],
+  identity: Pick<BridgeEvent, "conversationKey" | "stateFingerprint"> = {},
 ): boolean {
   const id = eventId ?? randomUUID();
-  const created = queue.enqueue(buildBridgeEvent(
+  const event = buildBridgeEvent(
     id,
     source,
     text,
     new Date().toISOString(),
     additionalModelContext,
     replyTarget,
-  ));
-  if (created) listenerWakeHub.wake(source);
+    identity,
+  );
+  const created = queue.enqueue(event);
+  if (created) {
+    if (AI_BACKEND === "codex") codex?.notify(event);
+    else listenerWakeHub.wake(source);
+  }
   return created;
 }
 
 const togetherWorker = createTogetherWorker(enqueueTogetherEvent, playbackState);
 
+async function startCodex(): Promise<void> {
+  try {
+    codexTools = await createCodexTools(queue, togetherWorker, playbackState);
+    const instructionsPath = process.env.CODEX_INSTRUCTIONS_FILE?.trim();
+    const runtime = new CodexRuntime({
+      executable: process.env.CODEX_BIN?.trim() || "codex",
+      cwd: resolve(process.env.CODEX_WORKSPACE?.trim() || "data/codex-workspace"),
+      model: process.env.CODEX_MODEL?.trim() || undefined,
+      effort: process.env.CODEX_REASONING_EFFORT?.trim() || undefined,
+      instructions: instructionsPath ? readFileSync(instructionsPath, "utf8") : undefined,
+      tools: codexTools,
+    });
+    codex = new CodexService(queue, togetherWorker, runtime, { path: DB_PATH });
+    codex.start();
+  } catch (error) {
+    codexStartupError = error instanceof Error ? error.message : String(error);
+    console.error("Codex backend startup failed", { error: codexStartupError });
+    await codexTools?.close();
+    codexTools = undefined;
+  }
+}
+
+
 const eventInput = z.object({
   eventId: z.string().trim().min(1).max(200).optional(),
   source: z.string().trim().min(1).max(80).default("test"),
   text: z.string().trim().min(1).max(4000),
+  conversationKey: z.string().trim().min(1).max(200).optional(),
+  replyTarget: z.object({ roomId: z.string().min(1), chatRoomId: z.string().min(1) }).optional(),
 });
 
 function writeJson(res: ServerResponse, status: number, value: unknown): void {
@@ -94,7 +134,9 @@ export function createHttpServer() {
       writeJson(res, 200, {
         ok: true,
         service: "cove-bridge",
-        version: "0.3.0",
+        version: "0.4.0",
+        backend: AI_BACKEND,
+        codex: AI_BACKEND === "codex" ? { busy: codex?.status().busy ?? false, error: codexStartupError } : undefined,
         queue: queue.status(),
         listener: listenerWakeHub.status(),
       });
@@ -129,9 +171,12 @@ export function createHttpServer() {
         }
         const createdAt = new Date().toISOString();
         const id = parsed.data.eventId ?? randomUUID();
-        const event = buildBridgeEvent(id, parsed.data.source, parsed.data.text, createdAt);
+        const event = buildBridgeEvent(id, parsed.data.source, parsed.data.text, createdAt, undefined, parsed.data.replyTarget, { conversationKey: parsed.data.conversationKey });
         const created = queue.enqueue(event);
-        if (created) listenerWakeHub.wake(parsed.data.source);
+        if (created) {
+          if (AI_BACKEND === "codex") codex?.notify(event);
+          else listenerWakeHub.wake(parsed.data.source);
+        }
         writeJson(res, created ? 201 : 200, { ok: true, created, eventId: id });
       } catch (error) {
         const message = error instanceof Error ? error.message : "invalid_request";
@@ -140,12 +185,31 @@ export function createHttpServer() {
       return;
     }
 
+    if (url.pathname === "/codex/status" || url.pathname.startsWith("/codex/jobs/")) {
+      if (!authorized(req)) { writeJson(res, 401, { error: "unauthorized" }); return; }
+      if (!codex) { writeJson(res, 503, { backend: AI_BACKEND, error: codexStartupError ?? "Codex backend is not ready" }); return; }
+      if (req.method === "GET" && url.pathname === "/codex/status") { writeJson(res, 200, codex.status()); return; }
+      const match = url.pathname.match(/^\/codex\/jobs\/([^/]+)\/(retry|recover)$/);
+      try {
+        if (req.method !== "POST" || !match) { writeJson(res, 405, { error: "method_not_allowed" }); return; }
+        const body = await readJson(req) as Record<string, unknown>;
+        const eventId = decodeURIComponent(match[1]);
+        if (match[2] === "recover") {
+          if (typeof body.lastBubbleDelivered !== "boolean") throw new Error("lastBubbleDelivered must be boolean");
+          queue.recoverReply(eventId, body.lastBubbleDelivered);
+        }
+        codex.retry(eventId, body.confirmRestart === true);
+        writeJson(res, 202, { ok: true });
+      } catch (error) { writeJson(res, 400, { error: error instanceof Error ? error.message : "invalid_request" }); }
+      return;
+    }
+
     const mcpMethods = new Set(["POST", "GET", "DELETE"]);
     const mcpProfile = MCP_PATHS.get(url.pathname);
     if (mcpProfile && mcpMethods.has(req.method)) {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
-      const server = createMcpServer(queue, playbackState, togetherWorker, mcpProfile);
+      const server = createMcpServer(queue, playbackState, togetherWorker, mcpProfile, { automaticReplies: AI_BACKEND === "codex" });
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -172,6 +236,7 @@ if (process.env.NODE_ENV !== "test") {
   const servers = [createHttpServer()];
   servers[0].listen(PORT, "0.0.0.0", () => {
     console.log("Cove Resonance listening on http://0.0.0.0:" + PORT + " (MCP: /mcp, /mcp/music)");
+    if (AI_BACKEND === "codex") void startCodex();
     togetherWorker.start();
   });
 
@@ -189,7 +254,9 @@ if (process.env.NODE_ENV !== "test") {
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
+    await codex?.stop();
     await togetherWorker.shutdown();
+    await codexTools?.close();
     for (const server of servers) {
       server.closeAllConnections();
       server.close();

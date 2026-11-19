@@ -25,6 +25,7 @@ export function buildBridgeEvent(
   createdAt = new Date().toISOString(),
   additionalModelContext?: string,
   replyTarget?: BridgeEvent["replyTarget"],
+  identity: Pick<BridgeEvent, "conversationKey" | "stateFingerprint"> = {},
 ): BridgeEvent {
   const routing = replyRoutingFor(source);
   const streamRouting = streamRoutingFor(source);
@@ -68,6 +69,8 @@ export function buildBridgeEvent(
     source,
     ...streamRouting,
     ...routing,
+    ...identity,
+    ...(additionalModelContext ? { dataContext: additionalModelContext } : {}),
     ...(replyTarget ? { replyTarget } : {}),
     createdAt,
     visibleText,

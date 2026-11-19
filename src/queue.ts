@@ -85,6 +85,21 @@ export class SqliteEventQueue {
     });
   }
 
+  isLatestState(eventId: string): boolean {
+    const row = this.db.prepare("SELECT state_key FROM bridge_events WHERE id=? AND stream='state'").get(eventId);
+    if (!row) return false;
+    return this.db.prepare("SELECT id FROM bridge_events WHERE stream='state' AND state_key=? ORDER BY sequence DESC LIMIT 1").get(row.state_key!)?.id === eventId;
+  }
+
+  getPendingEvent(filter: (event: BridgeEvent) => boolean): BridgeEvent | null {
+    const rows = this.db.prepare("SELECT event FROM bridge_events WHERE status='pending' ORDER BY sequence").all();
+    for (const row of rows) {
+      const event: BridgeEvent = JSON.parse(String(row.event));
+      if (filter(event)) return event;
+    }
+    return null;
+  }
+
   getEvent(eventId: string): BridgeEvent | null { return this.row(eventId)?.event ?? null; }
   isReserved(eventId: string): boolean { return this.row(eventId)?.status === "reserved"; }
   getReply(eventId: string): ReplyDeliveryState | undefined { return this.row(eventId)?.reply; }
@@ -161,7 +176,7 @@ export class SqliteEventQueue {
       if (!row) throw new Error(`Unknown event: ${eventId}`);
       if (row.status === "pending") throw new Error(`Event is not reserved: ${eventId}`);
       this.db.prepare("UPDATE bridge_events SET status='delivered' WHERE id=?").run(eventId);
-      if (row.event.replyPolicy !== "required") return;
+      if (row.event.replyPolicy !== "required" && !row.reply) return;
       const reply = row.reply ?? { fingerprint: "__dismissed__", sentCount: 0, completed: false, inFlight: false };
       reply.completed = true;
       reply.inFlight = false;

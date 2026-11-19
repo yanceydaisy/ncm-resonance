@@ -1,9 +1,8 @@
-import { createHash } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { listenerWakeHub } from "../listenerWake.js";
 import type { TogetherWorker } from "../netease/togetherWorker.js";
-import { isDefinitiveChatSendFailure } from "../netease/realtimeTransport.js";
+import { deliverReply } from "./replyDelivery.js";
 import type { SqliteEventQueue } from "../queue.js";
 import { normalizeReplyBubbles } from "../replyBubbles.js";
 import type { BridgeEvent } from "../types.js";
@@ -61,86 +60,18 @@ export function registerBridgeTools(
       }
 
       const normalized = normalizeReplyBubbles(messages);
-      const fingerprint = createHash("sha256")
-        .update(JSON.stringify({ eventId: resolvedEventId, route: event.replyRoute, messages: normalized }))
-        .digest("hex");
-      const claim = queue.claimReply(resolvedEventId, fingerprint, normalized);
-
-      if (claim.state === "already_completed" || claim.state === "in_progress") {
-        return {
-          structuredContent: {
-            ok: true as const,
-            eventId: resolvedEventId,
-            route: "netease.chatroom" as const,
-            sentCount: claim.sentCount,
-            completed: claim.state === "already_completed",
-            deduplicated: true,
-          },
-          content: [{
-            type: "text",
-            text: claim.state === "already_completed"
-              ? "Reply was already delivered; duplicate send suppressed."
-              : "The same reply is already being delivered; duplicate send suppressed.",
-          }],
-        };
-      }
-
-      try {
-        let sentCount = claim.sentCount;
-        for (let index = sentCount; index < normalized.length; index += 1) {
-          queue.markReplySending(resolvedEventId, fingerprint);
-          const receipt = await togetherWorker.sendChatRoomText(normalized[index], {
-            ...event.replyTarget,
-            messageId: createHash("sha256").update(fingerprint + ":" + index).digest("hex"),
-          });
-          sentCount = queue.markReplyMessageSent(resolvedEventId, fingerprint, receipt);
-          if (index < normalized.length - 1) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 350));
-          }
-        }
-        queue.markReplyCompleted(resolvedEventId, fingerprint);
-        listenerWakeHub.wake("reply-completed");
-        console.log(
-          `Cove Bridge reply delivered: eventId=${resolvedEventId} route=${event.replyRoute} messages=${normalized.length}`,
-        );
-        return {
-          structuredContent: {
-            ok: true as const,
-            eventId: resolvedEventId,
-            route: "netease.chatroom" as const,
-            sentCount,
-            completed: true,
-            deduplicated: false,
-          },
-          content: [{
-            type: "text",
-            text: `Delivered ${sentCount} chat bubble(s) through ${event.replyRoute}.`,
-          }],
-        };
-      } catch (error) {
-        queue.releaseReply(resolvedEventId, fingerprint, isDefinitiveChatSendFailure(error));
-        throw error;
-      }
+      const delivered = await deliverReply(queue, togetherWorker, event, normalized);
+      if (delivered.completed) listenerWakeHub.wake("reply-completed");
+      return {
+        structuredContent: { ok: true as const, eventId: resolvedEventId, route: "netease.chatroom" as const, ...delivered },
+        content: [{ type: "text" as const, text: delivered.completed
+          ? `Delivered ${delivered.sentCount} chat bubble(s) through ${event.replyRoute}.`
+          : "The same reply is already being delivered; duplicate send suppressed." }],
+      };
     },
   );
 
-  server.registerTool(
-    "cove_bridge_recover_reply",
-    {
-      title: "Resolve an uncertain reply receipt",
-      description: "Resolve the last bubble of an interrupted routed reply only after the owner explicitly verifies in the destination app whether that bubble arrived. Never guess or call automatically. This records the owner's verification without sending a message. Resume using cove_bridge_reply with the returned saved messages.",
-      inputSchema: { eventId: z.string().min(1), lastBubbleDelivered: z.boolean() },
-      outputSchema: { eventId: z.string(), sentCount: z.number(), messages: z.array(z.string()) },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false },
-    },
-    async ({ eventId, lastBubbleDelivered }) => {
-      const event = queue.getEvent(eventId);
-      if (!event || !eventFilter(event)) throw new Error(`Unknown event: ${eventId}`);
-      const reply = queue.recoverReply(eventId, lastBubbleDelivered);
-      const result = { eventId, sentCount: reply.sentCount, messages: reply.messages ?? [] };
-      return { structuredContent: result, content: [{ type: "text" as const, text: JSON.stringify(result) }] };
-    },
-  );
+  registerReplyRecoveryTool(server, queue, eventFilter);
 
   server.registerTool(
     "cove_bridge_sync",
@@ -253,3 +184,30 @@ export function registerBridgeTools(
   );
 }
 
+
+export function registerReplyRecoveryTool(
+  server: McpServer,
+  queue: SqliteEventQueue,
+  eventFilter: (event: BridgeEvent) => boolean,
+  automaticReplies = false,
+): void {
+  server.registerTool(
+    "cove_bridge_recover_reply",
+    {
+      title: "Resolve an uncertain reply receipt",
+      description: "Resolve the last bubble of an interrupted routed reply only after the owner explicitly verifies in the destination app whether that bubble arrived. Never guess or call automatically. This records the owner's verification without sending a message. "
+        + (automaticReplies ? "The automatic scheduler resumes delivery from the saved progress." : "Resume using cove_bridge_reply with the returned saved messages."),
+      inputSchema: { eventId: z.string().min(1), lastBubbleDelivered: z.boolean() },
+      outputSchema: { eventId: z.string(), sentCount: z.number(), messages: z.array(z.string()) },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false, idempotentHint: false },
+    },
+    async ({ eventId, lastBubbleDelivered }) => {
+      const event = queue.getEvent(eventId);
+      if (!event || !eventFilter(event)) throw new Error(`Unknown event: ${eventId}`);
+      const reply = queue.recoverReply(eventId, lastBubbleDelivered);
+      const result = { eventId, sentCount: reply.sentCount, messages: reply.messages ?? [] };
+      return { structuredContent: result, content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+    },
+  );
+
+}

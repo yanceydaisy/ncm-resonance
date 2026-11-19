@@ -15,6 +15,12 @@
 
 ---
 
+## 选择 AI 后端
+
+默认 `BRIDGE_AI_BACKEND=chatgpt`，使用下文的官端 Listener 部署方式。
+
+设置 `BRIDGE_AI_BACKEND=codex` 可以让 Bridge 自动调用本机的官方 Codex 运行时。该模式需要部署者完成 CLI 登录，步骤见 [Codex 后端说明](CODEX.zh-CN.md)。
+
 ## 1. 先理解 Bridge 和两种监听路线
 
 ### Bridge

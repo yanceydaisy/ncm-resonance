@@ -12,6 +12,9 @@ export type BridgeEvent = {
   replyRoute?: ReplyRoute;
   replyPolicy?: ReplyPolicy;
   replyTarget?: { roomId: string; chatRoomId: string };
+  conversationKey?: string;
+  stateFingerprint?: string;
+  dataContext?: string;
   createdAt: string;
   visibleText: string;
   modelContext: string;

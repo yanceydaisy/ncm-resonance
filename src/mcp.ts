@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerBridgeApp } from "./bridge/registerApp.js";
-import { registerBridgeTools } from "./bridge/registerTools.js";
+import { registerBridgeTools, registerReplyRecoveryTool } from "./bridge/registerTools.js";
 import { registerBridgeWaitTool } from "./bridge/registerWaitTool.js";
 import { acceptsProfileSource, buildProfileInstructions, type McpProfile } from "./profiles.js";
 import { registerNeteaseAccountTools } from "./netease/accountTools.js";
@@ -18,19 +18,23 @@ export function createMcpServer(
   playbackState: PlaybackStateStore,
   togetherWorker: TogetherWorker,
   profile: McpProfile = "default",
+  options: { automaticReplies?: boolean } = {},
 ): McpServer {
   const server = new McpServer(
-    { name: profile === "music" ? "cove-resonance-music" : "cove-resonance", version: "0.3.0" },
-    { instructions: buildProfileInstructions(profile) },
+    { name: profile === "music" ? "cove-resonance-music" : "cove-resonance", version: "0.4.0" },
+    { instructions: options.automaticReplies ? "NetEase music tools. Cove Resonance manages automatic Codex turns and reply delivery." : buildProfileInstructions(profile) },
   );
   const eventFilter = (event: { source: string }) => acceptsProfileSource(profile, event.source);
 
   const neteaseAccountClient = new NeteaseClient(process.env.NETEASE_COOKIE?.trim() ?? "");
   registerNeteaseAccountTools(server, neteaseAccountClient);
-  registerBridgeApp(server);
-  registerNeteaseTogetherTools(server, playbackState, togetherWorker, queue, eventFilter);
-  registerBridgeTools(server, queue, eventFilter, togetherWorker);
-  registerBridgeWaitTool(server, queue, eventFilter);
+  if (!options.automaticReplies) registerBridgeApp(server);
+  registerNeteaseTogetherTools(server, playbackState, togetherWorker, queue, eventFilter, options);
+  if (options.automaticReplies) registerReplyRecoveryTool(server, queue, eventFilter, true);
+  else {
+    registerBridgeTools(server, queue, eventFilter, togetherWorker);
+    registerBridgeWaitTool(server, queue, eventFilter);
+  }
 
   return server;
 }

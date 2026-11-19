@@ -19,7 +19,7 @@ import type {
   TogetherWorkerStatus,
 } from "./types.js";
 
-type EventSink = (source: string, text: string, modelContext?: string, eventId?: string, replyTarget?: BridgeEvent["replyTarget"]) => unknown;
+type EventSink = (source: string, text: string, modelContext?: string, eventId?: string, replyTarget?: BridgeEvent["replyTarget"], identity?: Pick<BridgeEvent, "conversationKey" | "stateFingerprint">) => unknown;
 
 type TogetherWorkerOptions = {
   cookie: string;
@@ -78,6 +78,7 @@ export class TogetherWorker {
   private readonly handledInvites = new Set<string>();
   private readonly handledChatMessageKeys = new Set<string>();
   private running = false;
+  private peerId: string | null = null;
   private lifecycleGeneration = 0;
   private runPromise: Promise<void> | null = null;
   private pollSleepTimer: ReturnType<typeof setTimeout> | null = null;
@@ -103,6 +104,7 @@ export class TogetherWorker {
   private status: TogetherWorkerStatus;
 
   constructor(private readonly options: TogetherWorkerOptions) {
+    this.peerId = options.inviterUid ?? null;
     this.client = new NeteaseClient(options.cookie);
     this.realtime = new NeteaseRealtimeTransport(
       options.enabled,
@@ -132,6 +134,24 @@ export class TogetherWorker {
 
   getRealtimeStatus(): RealtimeTransportStatus {
     return this.realtime.getStatus();
+  }
+
+  getConversationKey(): string | null {
+    const accountId = this.status.accountId;
+    if (!accountId || !this.peerId) return null;
+    return "netease:" + createHash("sha256").update(JSON.stringify([accountId, this.peerId])).digest("hex");
+  }
+
+  getMusicContext(): string {
+    const latest = this.latestPlaying;
+    const songMatches = !latest?.songId || latest.songId === this.status.currentSong?.id;
+    return [
+      JSON.stringify({ inRoom: Boolean(this.roomId), roomId: this.roomId,
+        song: songMatches ? this.status.currentSong : { id: latest?.songId },
+        playStatus: latest?.playStatus ?? this.status.playStatus,
+        progressMs: this.currentPlaybackProgressMs(), observedAt: new Date().toISOString() }),
+      songMatches ? this.currentLyricsModelContext ?? "" : "",
+    ].filter(Boolean).join("\n");
   }
 
   async sendChatRoomText(text: string, options: RealtimeChatSendOptions = {}): Promise<RealtimeChatSendResult> {
@@ -586,7 +606,7 @@ export class TogetherWorker {
         this.handledInvites.delete(invite.roomId);
         return;
       }
-      this.enterRoom(accepted.roomId ?? invite.roomId, accepted.chatRoomId);
+      this.enterRoom(accepted.roomId ?? invite.roomId, accepted.chatRoomId, invite.inviterId);
       if (accepted.roomId && accepted.chatRoomId) {
         await this.ensureRealtime(accepted.roomId, accepted.chatRoomId, generation);
       }
@@ -597,7 +617,8 @@ export class TogetherWorker {
     }
   }
 
-  private enterRoom(roomId: string, chatRoomId: string | null = null): void {
+  private enterRoom(roomId: string, chatRoomId: string | null = null, peerId?: string): void {
+    this.peerId = peerId ?? this.options.inviterUid ?? null;
     const changedRoom = this.roomId !== roomId;
     if (changedRoom) {
       this.rejectPendingPlaybackControl("NetEase Listen Together room changed before playback control confirmation.");
@@ -631,7 +652,13 @@ export class TogetherWorker {
     replyTarget = this.roomId && this.chatRoomId
       ? { roomId: this.roomId, chatRoomId: this.chatRoomId } : undefined,
   ): void {
-    this.options.onEvent(source, text, modelContext, eventId, replyTarget);
+    const conversationKey = this.getConversationKey() ?? undefined;
+    const stateFingerprint = source === "netease.chatroom" ? undefined
+      : createHash("sha256").update(JSON.stringify({
+          songId: this.status.currentSong?.id ?? this.latestPlaying?.songId ?? null,
+          playStatus: this.status.playStatus, inRoom: Boolean(this.roomId),
+        })).digest("hex");
+    this.options.onEvent(source, text, modelContext, eventId, replyTarget, { conversationKey, stateFingerprint });
   }
 
   private leaveRoom(message: string, emitEvent = true): void {
@@ -960,6 +987,7 @@ export class TogetherWorker {
       console.warn("NetEase duplicate ChatRoom message suppressed: messageId=" + suffix);
       return;
     }
+    if (message.senderId) this.peerId = message.senderId;
     this.emitEvent(
       "netease.chatroom",
       message.text,
