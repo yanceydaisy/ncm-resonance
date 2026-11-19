@@ -21,8 +21,8 @@ export function createMcpServer(
   options: { automaticReplies?: boolean } = {},
 ): McpServer {
   const server = new McpServer(
-    { name: profile === "music" ? "resonance-bridge-music" : "resonance-bridge", version: "0.5.0" },
-    { instructions: options.automaticReplies ? "NetEase music tools. Resonance Bridge manages automatic Codex turns and reply delivery." : buildProfileInstructions(profile) },
+    { name: profile === "music" ? "ncm-resonance-music" : "ncm-resonance", version: "0.6.0" },
+    { instructions: options.automaticReplies ? "NetEase music tools. NCM Resonance manages automatic Codex turns and reply delivery." : buildProfileInstructions(profile) },
   );
   const eventFilter = (event: { source: string }) => acceptsProfileSource(profile, event.source);
 

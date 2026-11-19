@@ -2,12 +2,12 @@
 set -euo pipefail
 
 export DISPLAY=:91
-RESONANCE_LISTENER_DIR="${RESONANCE_LISTENER_DIR:-/opt/resonance-bridge/listener}"
-export XDG_CONFIG_HOME="$RESONANCE_LISTENER_DIR/.config"
-export XDG_CACHE_HOME="$RESONANCE_LISTENER_DIR/.cache"
-export XDG_RUNTIME_DIR=/run/resonance-listener
+NCM_RESONANCE_LISTENER_DIR="${NCM_RESONANCE_LISTENER_DIR:-${RESONANCE_LISTENER_DIR:-/opt/ncm-resonance/listener}}"
+export XDG_CONFIG_HOME="$NCM_RESONANCE_LISTENER_DIR/.config"
+export XDG_CACHE_HOME="$NCM_RESONANCE_LISTENER_DIR/.cache"
+export XDG_RUNTIME_DIR=/run/ncm-resonance-listener
 
-mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$RESONANCE_LISTENER_DIR/logs"
+mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$NCM_RESONANCE_LISTENER_DIR/logs"
 
 cleanup() {
   jobs -pr | xargs -r kill 2>/dev/null || true
@@ -15,20 +15,20 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 Xvfb "$DISPLAY" -screen 0 1440x1000x24 -nolisten tcp -ac \
-  >>"$RESONANCE_LISTENER_DIR/logs/xvfb.log" 2>&1 &
+  >>"$NCM_RESONANCE_LISTENER_DIR/logs/xvfb.log" 2>&1 &
 for _ in $(seq 1 50); do
   if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then break; fi
   sleep 0.1
 done
 
-openbox-session >>"$RESONANCE_LISTENER_DIR/logs/openbox.log" 2>&1 &
+openbox-session >>"$NCM_RESONANCE_LISTENER_DIR/logs/openbox.log" 2>&1 &
 x11vnc -display "$DISPLAY" -localhost -rfbport 5901 -forever -shared -nopw -noxdamage \
-  >>"$RESONANCE_LISTENER_DIR/logs/x11vnc.log" 2>&1 &
+  >>"$NCM_RESONANCE_LISTENER_DIR/logs/x11vnc.log" 2>&1 &
 websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5901 \
-  >>"$RESONANCE_LISTENER_DIR/logs/novnc.log" 2>&1 &
+  >>"$NCM_RESONANCE_LISTENER_DIR/logs/novnc.log" 2>&1 &
 
 google-chrome \
-  --user-data-dir="$RESONANCE_LISTENER_DIR/profile" \
+  --user-data-dir="$NCM_RESONANCE_LISTENER_DIR/profile" \
   --remote-debugging-address=127.0.0.1 \
   --remote-debugging-port=9222 \
   --restore-last-session \
@@ -39,7 +39,7 @@ google-chrome \
   --disable-dev-shm-usage \
   --lang=zh-CN \
   https://chatgpt.com/ \
-  >>"$RESONANCE_LISTENER_DIR/logs/chrome.log" 2>&1 &
+  >>"$NCM_RESONANCE_LISTENER_DIR/logs/chrome.log" 2>&1 &
 chrome_pid=$!
 wait "$chrome_pid"
 

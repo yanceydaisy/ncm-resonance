@@ -1,17 +1,17 @@
 [Unit]
-Description=Resonance Bridge Listener persistent ChatGPT browser host
-After=network-online.target resonance-bridge.service
+Description=NCM Resonance Listener persistent ChatGPT browser host
+After=network-online.target ncm-resonance.service
 Wants=network-online.target
-Requires=resonance-bridge.service
+Requires=ncm-resonance.service
 
 [Service]
 Type=simple
 User=www-data
 Group=www-data
-RuntimeDirectory=resonance-listener
+RuntimeDirectory=ncm-resonance-listener
 RuntimeDirectoryMode=0700
 Environment=TZ=Asia/Shanghai
-ExecStart=/usr/local/bin/resonance-listener-host
+ExecStart=/usr/local/bin/ncm-resonance-listener-host
 Restart=always
 RestartSec=5
 TimeoutStopSec=20
@@ -20,7 +20,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/opt/resonance-bridge/listener /run/resonance-listener
+ReadWritePaths=/opt/ncm-resonance/listener /run/ncm-resonance-listener
 
 [Install]
 WantedBy=multi-user.target

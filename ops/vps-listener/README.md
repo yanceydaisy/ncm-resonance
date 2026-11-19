@@ -1,16 +1,16 @@
-# Resonance Bridge VPS Listener Host
+# NCM Resonance VPS Listener Host
 
-This directory documents the persistent browser host used by Resonance Bridge.
+This directory documents the persistent browser host used by NCM Resonance.
 
 Runtime stack:
 
 - Xvfb virtual display on `:91`
 - Openbox window manager
-- Google Chrome with a persistent profile under `/opt/resonance-bridge/listener/profile`
+- Google Chrome with a persistent profile under `/opt/ncm-resonance/listener/profile`
 - x11vnc bound only to `127.0.0.1:5901`
 - noVNC/websockify bound only to `127.0.0.1:6080`
 - Chrome DevTools bound only to `127.0.0.1:9222`
-- systemd restart policy via `resonance-listener.service`
+- systemd restart policy via `ncm-resonance-listener.service`
 
 The browser profile contains the ChatGPT login/session state and must not be committed.
 
@@ -24,7 +24,7 @@ Then open:
 
 `http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale`
 
-Log into ChatGPT, open the dedicated Listener conversation, mount Resonance Bridge, and start listening.
+Log into ChatGPT, open the dedicated Listener conversation, mount NCM Resonance, and start listening.
 
 Do not expose ports 5901, 6080, or 9222 publicly. They are intentionally loopback-only.
 

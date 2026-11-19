@@ -1,4 +1,4 @@
-# Resonance Bridge 技术实现说明（面向人类 + Agent）
+# NCM Resonance 技术实现说明（面向人类 + Agent）
 
 > 这不是部署教程。  
 > 这是一份“把底层思路讲清楚”的实现文档，目标是让不同客户端、不同宿主、不同消息源都能照着这套架构改，而不是死抄当前 NetEase + ChatGPT 版本。
@@ -19,7 +19,7 @@
 
 # 0. 一句话设计
 
-Resonance Bridge 不把 AI 搬进外部应用。
+NCM Resonance 不把 AI 搬进外部应用。
 
 它做的是：
 
@@ -85,8 +85,8 @@ Host Adapter
   │   ├─ ui/update-model-context
   │   └─ ui/message
   └─ Long-wait MCP
-      ├─ resonance_bridge_wait
-      └─ resonance_bridge_wait_ack
+      ├─ ncm_resonance_wait
+      └─ ncm_resonance_wait_ack
 
 Reply Egress
   └─ NIM ChatRoom send
@@ -554,7 +554,7 @@ Widget Listener 是 Host Adapter 的一种实现。
 
 ```text
 定时 / 手动触发
-→ resonance_bridge_sync
+→ ncm_resonance_sync
 → 投递 context
 → 投递 visible message
 → ACK
@@ -586,7 +586,7 @@ pendingAcks
 async function tick() {
   await flushPendingAcks()
 
-  const result = await bridge.call("resonance_bridge_sync", {})
+  const result = await bridge.call("ncm_resonance_sync", {})
   const event = result.meta?.event
   if (!event) return
 
@@ -600,12 +600,12 @@ async function tick() {
     const handoff = await host.injectUserMessage(event.visibleText)
 
     if (handoff.outcome === "dismissed") {
-      await bridge.call("resonance_bridge_dismissed", { eventId: event.id })
+      await bridge.call("ncm_resonance_dismissed", { eventId: event.id })
       return
     }
   } catch (error) {
     // 只有在 Host 尚未接管消息时才允许 release。
-    await bridge.call("resonance_bridge_release", { eventId: event.id })
+    await bridge.call("ncm_resonance_release", { eventId: event.id })
     throw error
   }
 
@@ -654,7 +654,7 @@ SSE / WebSocket / native push
 
 同时继续保留低频 fallback poll。
 
-因此 Resonance Bridge 的 Listener 设计不是：
+因此 NCM Resonance 的 Listener 设计不是：
 
 ```text
 SSE 替代轮询
@@ -685,10 +685,10 @@ Long-wait 不调用 `ui/message`。它让一个已经开始的模型 turn 等待
 
 ```text
 用户明确开始监听
-→ resonance_bridge_wait
+→ ncm_resonance_wait
 → reserve event
 → tool result 返回
-→ resonance_bridge_wait_ack
+→ ncm_resonance_wait_ack
 → 处理事件
 → required reply（如有）
 → next wait
@@ -705,14 +705,14 @@ Long-wait 不调用 `ui/message`。它让一个已经开始的模型 turn 等待
 ```text
 pending
 → reserve
-→ resonance_bridge_wait 返回 event
-→ resonance_bridge_wait_ack(eventId)
+→ ncm_resonance_wait 返回 event
+→ ncm_resonance_wait_ack(eventId)
 → 处理 modelContext / visibleText
-→ required resonance_bridge_reply（如有）
+→ required ncm_resonance_reply（如有）
 → next wait
 ```
 
-模型侧 ACK 使用 `resonance_bridge_wait_ack`。Widget Listener 仍使用 app-only delivered 路径，二者不要混用 ACK 责任。
+模型侧 ACK 使用 `ncm_resonance_wait_ack`。Widget Listener 仍使用 app-only delivered 路径，二者不要混用 ACK 责任。
 
 如果上一条 required event 还没有完成 routed reply，下一次 wait 会立即返回 `awaitingReply=true`，不能绕过 backpressure 去取下一条。
 
@@ -756,14 +756,14 @@ ui/notifications/initialized
 
 先强调一次：
 
-> **SSE 不是 Resonance Bridge 的基础协议。基础协议是 sync / reserve / dispatch / ACK。**
+> **SSE 不是 NCM Resonance 的基础协议。基础协议是 sync / reserve / dispatch / ACK。**
 
 如果目标 Host 不支持 EventSource，直接停留在 Level 1 纯轮询即可，不需要修改 Queue 或 reply routing。
 
 当前参考实现：
 
 ```text
-resonance_bridge_listener_session
+ncm_resonance_listener_session
 ↓
 返回短期单次 token
 ↓
@@ -863,9 +863,9 @@ reserve event
 ui/update-model-context
 ↓
 ui/message handoff
-├─ accepted  → rememberDispatched → resonance_bridge_delivered
-├─ dismissed → resonance_bridge_dismissed
-└─ pre-handoff failure → resonance_bridge_release
+├─ accepted  → rememberDispatched → ncm_resonance_delivered
+├─ dismissed → ncm_resonance_dismissed
+└─ pre-handoff failure → ncm_resonance_release
 ```
 
 不同 Host 对 `ui/message` 的交互可以不同，这个差异属于 Host adapter，不应该改写 Queue / reply 协议。
@@ -899,7 +899,7 @@ pendingAcks
 如果 Host 已经接管 `ui/message`，并且最终结果是 dismissed / cancelled：
 
 ```text
-resonance_bridge_dismissed(eventId)
+ncm_resonance_dismissed(eventId)
 ```
 
 这是 terminal outcome。不要 release，不要让事件复活；对于 required reply，该 terminal 状态也必须释放 backpressure。
@@ -975,7 +975,7 @@ modelContext
 当前关键工具：
 
 ```text
-resonance_bridge_reply
+ncm_resonance_reply
 ```
 
 模型不是直接调用外部 SDK。
@@ -1653,7 +1653,7 @@ Host Adapter interface
 当前：
 
 ```text
-ui://widget/resonance-bridge.html
+ui://widget/ncm-resonance.html
 ```
 
 不把版本号塞进 URI。
@@ -1761,7 +1761,7 @@ State 待处理记录按 stateKey 合并，恢复时跳过已经被更新状态�
 
 发送前提交 sendingIndex，NIM 确认后提交 sentCount 并清除该标记。确认后的气泡在重试时跳过。发送成功与本地提交之间仍有跨系统窗口，回执缺失的气泡需要先核实收件端结果。
 
-`resonance_bridge_recover_reply` 记录人类核实的结果，随后用保存的 messages 继续 `resonance_bridge_reply`。具体步骤见 [持久化说明](PERSISTENCE.zh-CN.md)。
+`ncm_resonance_recover_reply` 记录人类核实的结果，随后用保存的 messages 继续 `ncm_resonance_reply`。具体步骤见 [持久化说明](PERSISTENCE.zh-CN.md)。
 
 ---
 
@@ -2062,7 +2062,7 @@ conversation/state distinction
 可以直接复制下面这段给任何编码 Agent。
 
 ```text
-你正在把 Resonance Bridge 适配到一个新的 AI Host / 外部平台。
+你正在把 NCM Resonance 适配到一个新的 AI Host / 外部平台。
 
 先阅读：
 - AGENTS.md
@@ -2101,7 +2101,7 @@ External world
    ⇅
 Adapters
    ⇅
-Resonance Bridge Core
+NCM Resonance Core
    ⇅
 Host Adapter
    ⇅
@@ -2119,5 +2119,5 @@ Official AI client
 
 还在，这个项目就没有推倒重来。
 
-这就是 Resonance Bridge 的底层架构。
+这就是 NCM Resonance 的底层架构。
 

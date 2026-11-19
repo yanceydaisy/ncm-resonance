@@ -7,7 +7,7 @@ const DEFAULT_TIMEOUT_SECONDS = 45;
 const POLL_INTERVAL_MS = 250;
 
 async function delay(ms: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) throw new Error("Resonance Bridge long-wait request was cancelled.");
+  if (signal.aborted) throw new Error("NCM Resonance long-wait request was cancelled.");
 
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -18,7 +18,7 @@ async function delay(ms: number, signal: AbortSignal): Promise<void> {
     const onAbort = () => {
       clearTimeout(timer);
       signal.removeEventListener("abort", onAbort);
-      reject(new Error("Resonance Bridge long-wait request was cancelled."));
+      reject(new Error("NCM Resonance long-wait request was cancelled."));
     };
 
     signal.addEventListener("abort", onAbort, { once: true });
@@ -31,14 +31,14 @@ export function registerBridgeWaitTool(
   eventFilter: (event: BridgeEvent) => boolean,
 ): void {
   server.registerTool(
-    "resonance_bridge_wait",
+    "ncm_resonance_wait",
     {
-      title: "Wait for a Resonance Bridge event",
+      title: "Wait for a NCM Resonance event",
       description:
         "Long-wait Listener path. Hold this MCP tool call until a Bridge event becomes available or the timeout expires. " +
         "Use only when the user explicitly asks to start long-wait listening. Do not run this concurrently with the Widget Listener. " +
-        "When hasEvent=true, immediately call resonance_bridge_wait_ack with the returned eventId, then handle the event using modelContext and visibleText. " +
-        "After any required routed reply completes, call resonance_bridge_wait again only if the user asked to remain listening.",
+        "When hasEvent=true, immediately call ncm_resonance_wait_ack with the returned eventId, then handle the event using modelContext and visibleText. " +
+        "After any required routed reply completes, call ncm_resonance_wait again only if the user asked to remain listening.",
       inputSchema: {
         timeoutSeconds: z.number().int().min(1).max(DEFAULT_TIMEOUT_SECONDS).optional(),
       },
@@ -72,7 +72,7 @@ export function registerBridgeWaitTool(
 
       while (true) {
         if (extra.signal.aborted) {
-          throw new Error("Resonance Bridge long-wait request was cancelled.");
+          throw new Error("NCM Resonance long-wait request was cancelled.");
         }
 
         const outstanding = queue.getOutstandingRequiredReplyEvent(eventFilter);
@@ -93,10 +93,10 @@ export function registerBridgeWaitTool(
             content: [{
               type: "text",
               text:
-                "Resonance Bridge long-wait is paused because a required routed reply is still outstanding. " +
-                "Resume this existing event without injecting another user message. If its reservation is unacknowledged, call resonance_bridge_wait_ack first. " +
-                "Reuse replyMessages when present. If deliveryUncertain=true, ask the owner to verify the last bubble before resonance_bridge_recover_reply. " +
-                "Complete the current resonance_bridge_reply before waiting for another event.\n" + outstanding.modelContext + "\n" + outstanding.visibleText,
+                "NCM Resonance long-wait is paused because a required routed reply is still outstanding. " +
+                "Resume this existing event without injecting another user message. If its reservation is unacknowledged, call ncm_resonance_wait_ack first. " +
+                "Reuse replyMessages when present. If deliveryUncertain=true, ask the owner to verify the last bubble before ncm_resonance_recover_reply. " +
+                "Complete the current ncm_resonance_reply before waiting for another event.\n" + outstanding.modelContext + "\n" + outstanding.visibleText,
             }],
           };
         }
@@ -105,7 +105,7 @@ export function registerBridgeWaitTool(
         if (event) {
           if (extra.signal.aborted) {
             queue.release(event.id);
-            throw new Error("Resonance Bridge long-wait request was cancelled.");
+            throw new Error("NCM Resonance long-wait request was cancelled.");
           }
 
           return {
@@ -127,8 +127,8 @@ export function registerBridgeWaitTool(
               type: "text",
               text: [
                 "RESONANCE BRIDGE LONG-WAIT EVENT",
-                "This event was reserved by resonance_bridge_wait.",
-                "Immediately call resonance_bridge_wait_ack with eventId=" + event.id + " before waiting again.",
+                "This event was reserved by ncm_resonance_wait.",
+                "Immediately call ncm_resonance_wait_ack with eventId=" + event.id + " before waiting again.",
                 "",
                 event.modelContext,
                 "",
@@ -150,8 +150,8 @@ export function registerBridgeWaitTool(
             content: [{
               type: "text",
               text:
-                "No Resonance Bridge event arrived before the long-wait timeout. " +
-                "If the user explicitly asked to keep listening, resonance_bridge_wait may be called again.",
+                "No NCM Resonance event arrived before the long-wait timeout. " +
+                "If the user explicitly asked to keep listening, ncm_resonance_wait may be called again.",
             }],
           };
         }
@@ -162,12 +162,12 @@ export function registerBridgeWaitTool(
   );
 
   server.registerTool(
-    "resonance_bridge_wait_ack",
+    "ncm_resonance_wait_ack",
     {
-      title: "Acknowledge a Resonance Bridge long-wait event",
+      title: "Acknowledge a NCM Resonance long-wait event",
       description:
-        "Acknowledge an event returned by resonance_bridge_wait after the model has accepted it. " +
-        "This is the model-side long-wait acknowledgement path; the existing app-only resonance_bridge_delivered tool remains reserved for the Widget Listener.",
+        "Acknowledge an event returned by ncm_resonance_wait after the model has accepted it. " +
+        "This is the model-side long-wait acknowledgement path; the existing app-only ncm_resonance_delivered tool remains reserved for the Widget Listener.",
       inputSchema: { eventId: z.string().trim().min(1) },
       outputSchema: { acknowledged: z.boolean() },
       annotations: {
@@ -180,7 +180,7 @@ export function registerBridgeWaitTool(
     async ({ eventId }) => {
       const event = queue.getEvent(eventId);
       if (!event || !eventFilter(event)) {
-        throw new Error(`Unknown Resonance Bridge long-wait event: ${eventId}`);
+        throw new Error(`Unknown NCM Resonance long-wait event: ${eventId}`);
       }
       queue.markDelivered(eventId);
       return {

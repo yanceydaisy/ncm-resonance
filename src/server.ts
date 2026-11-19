@@ -134,8 +134,8 @@ export function createHttpServer() {
     if (req.method === "GET" && url.pathname === "/") {
       writeJson(res, 200, {
         ok: true,
-        service: "resonance-bridge",
-        version: "0.5.0",
+        service: "ncm-resonance",
+        version: "0.6.0",
         backend: AI_BACKEND,
         codex: AI_BACKEND === "codex" ? { busy: codex?.status().busy ?? false, error: codexStartupError } : undefined,
         queue: queue.status(),
@@ -238,7 +238,7 @@ export function createHttpServer() {
 if (process.env.NODE_ENV !== "test") {
   const servers = [createHttpServer()];
   servers[0].listen(PORT, "0.0.0.0", () => {
-    console.log("Resonance Bridge listening on http://0.0.0.0:" + PORT + " (MCP: /mcp, /mcp/music)");
+    console.log("NCM Resonance listening on http://0.0.0.0:" + PORT + " (MCP: /mcp, /mcp/music)");
     if (AI_BACKEND === "codex") void startCodex();
     togetherWorker.start();
   });
@@ -249,7 +249,7 @@ if (process.env.NODE_ENV !== "test") {
     servers.push(unixServer);
     unixServer.listen(UNIX_SOCKET, () => {
       chmodSync(UNIX_SOCKET, 0o666);
-      console.log("Resonance Bridge listening on unix://" + UNIX_SOCKET + " (MCP: /mcp, /mcp/music)");
+      console.log("NCM Resonance listening on unix://" + UNIX_SOCKET + " (MCP: /mcp, /mcp/music)");
     });
   }
 

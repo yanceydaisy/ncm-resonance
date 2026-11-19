@@ -42,7 +42,7 @@ for (const failure of ["NIM ChatRoom send request was rejected locally", "NIM Ch
     let session = await connect(queue, send);
     t.after(async () => { await session.close(); queue.close(); rmSync(dir, { recursive: true, force: true }); });
     const arguments_ = { eventId: "routed", messages: ["first", "second"] };
-    assert.equal((await session.client.callTool({ name: "resonance_bridge_reply", arguments: arguments_ })).isError, true);
+    assert.equal((await session.client.callTool({ name: "ncm_resonance_reply", arguments: arguments_ })).isError, true);
     assert.deepEqual(sent, ["first"]);
     assert.equal(queue.getReply("routed")?.sentCount, 1);
     await session.close();
@@ -52,18 +52,18 @@ for (const failure of ["NIM ChatRoom send request was rejected locally", "NIM Ch
     fail = false;
     if (failure.includes("timed out")) {
       const attempts = optionsSeen.length;
-      assert.equal((await session.client.callTool({ name: "resonance_bridge_reply", arguments: arguments_ })).isError, true);
+      assert.equal((await session.client.callTool({ name: "ncm_resonance_reply", arguments: arguments_ })).isError, true);
       assert.equal(optionsSeen.length, attempts);
-      const recovered = await session.client.callTool({ name: "resonance_bridge_recover_reply", arguments: { eventId: "routed", lastBubbleDelivered: false } });
+      const recovered = await session.client.callTool({ name: "ncm_resonance_recover_reply", arguments: { eventId: "routed", lastBubbleDelivered: false } });
       assert.notEqual(recovered.isError, true);
     }
-    const completed = await session.client.callTool({ name: "resonance_bridge_reply", arguments: arguments_ });
+    const completed = await session.client.callTool({ name: "ncm_resonance_reply", arguments: arguments_ });
     assert.notEqual(completed.isError, true);
     assert.equal((completed.structuredContent as { completed: boolean }).completed, true);
     assert.deepEqual(sent, ["first", "second"]);
     assert.equal(optionsSeen[1].messageId, optionsSeen.at(-1)!.messageId);
     assert.ok(optionsSeen.every(options => options.roomId === "original" && options.chatRoomId === "123"));
-    await session.client.callTool({ name: "resonance_bridge_reply", arguments: arguments_ });
+    await session.client.callTool({ name: "ncm_resonance_reply", arguments: arguments_ });
     assert.deepEqual(sent, ["first", "second"]);
   });
 }

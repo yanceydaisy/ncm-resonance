@@ -1,12 +1,12 @@
-# Resonance Bridge 从零部署教程
+# NCM Resonance 从零部署教程
 
-这份教程面向第一次部署 Resonance Bridge 的人。目标是完成下面这一条链：
+这份教程面向第一次部署 NCM Resonance 的人。目标是完成下面这一条链：
 
 ```text
 网易云一起听 ChatRoom
         ⇅
       VPS
-   Resonance Bridge
+   NCM Resonance
         ⇅
    ChatGPT Listener
 ```
@@ -46,7 +46,7 @@ Widget Listener 是一个 MCP App Widget。
 
 Long-wait 不走 `ui/message`。
 
-用户先在 ChatGPT 中明确开始监听，模型调用 `resonance_bridge_wait` 保持等待；未来事件到达后，这次 MCP tool call 返回，当前模型 turn 继续处理。
+用户先在 ChatGPT 中明确开始监听，模型调用 `ncm_resonance_wait` 保持等待；未来事件到达后，这次 MCP tool call 返回，当前模型 turn 继续处理。
 
 它更像：
 
@@ -97,7 +97,7 @@ npm
 
 ### Docker 基础镜像
 
-Resonance Bridge 依赖带 native runtime 的 `node-nim`。Docker 部署建议使用 **Debian/glibc** 基础镜像；仓库默认 Dockerfile 使用 `node:22-slim`。
+NCM Resonance 依赖带 native runtime 的 `node-nim`。Docker 部署建议使用 **Debian/glibc** 基础镜像；仓库默认 Dockerfile 使用 `node:22-slim`。
 
 不建议使用 Alpine/musl 作为运行环境。外部部署反馈显示，Alpine 下可能出现 NIM bootstrap timeout 或 realtime 初始化失败，而切换到 Debian slim 后恢复正常。
 
@@ -108,8 +108,8 @@ Resonance Bridge 依赖带 native runtime 的 `node-nim`。Docker 部署建议�
 ## 3. 下载并测试代码
 
 ```bash
-git clone https://github.com/yanceydaisy/resonance-bridge.git
-cd resonance-bridge
+git clone https://github.com/yanceydaisy/ncm-resonance.git
+cd ncm-resonance
 
 npm install
 npm test
@@ -218,7 +218,7 @@ curl http://127.0.0.1:8787/
 ```json
 {
   "ok": true,
-  "service": "resonance-bridge"
+  "service": "ncm-resonance"
 }
 ```
 
@@ -261,16 +261,16 @@ SSE 不直接携带聊天正文，只发送 wake 信号。
 
 ```ini
 [Unit]
-Description=Resonance Bridge
+Description=NCM Resonance
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=resonance
-WorkingDirectory=/opt/resonance-bridge
-EnvironmentFile=/opt/resonance-bridge/.env
-ExecStart=/usr/bin/node /opt/resonance-bridge/dist/src/server.js
+WorkingDirectory=/opt/ncm-resonance
+EnvironmentFile=/opt/ncm-resonance/.env
+ExecStart=/usr/bin/node /opt/ncm-resonance/dist/src/server.js
 Restart=always
 RestartSec=5
 
@@ -282,14 +282,14 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now resonance-bridge
-sudo systemctl status resonance-bridge
+sudo systemctl enable --now ncm-resonance
+sudo systemctl status ncm-resonance
 ```
 
 查看日志：
 
 ```bash
-journalctl -u resonance-bridge -f
+journalctl -u ncm-resonance -f
 ```
 
 ---
@@ -308,7 +308,7 @@ https://bridge.example.com/mcp/music
 https://bridge.example.com/mcp
 ```
 
-然后在目标对话里挂载 Resonance Bridge。
+然后在目标对话里挂载 NCM Resonance。
 
 接下来 **只选一种监听方式**。
 
@@ -341,7 +341,7 @@ Widget 使用 SSE wake + 低频 fallback poll，然后通过 `ui/message` 把事
 直接在目标对话中明确让 ChatGPT 开始监听。模型会调用：
 
 ```text
-resonance_bridge_wait
+ncm_resonance_wait
 ```
 
 单次最多等待 45 秒；timeout 不是失败。如果用户仍明确要求继续监听，模型可以继续下一轮 wait。
@@ -350,9 +350,9 @@ resonance_bridge_wait
 
 ```text
 wait
-→ resonance_bridge_wait_ack
+→ ncm_resonance_wait_ack
 → 处理事件
-→ 如有 required reply 则 resonance_bridge_reply
+→ 如有 required reply 则 ncm_resonance_reply
 → next wait
 ```
 
@@ -377,7 +377,7 @@ wait
 建议第一次只测一句非常容易辨认的文本：
 
 ```text
-Resonance Bridge test 001
+NCM Resonance test 001
 ```
 
 在网易云一起听 ChatRoom 发送后，根据你选择的监听方式，会走不同的最后一段：
@@ -394,7 +394,7 @@ Widget Listener
 ChatGPT 当前对话
 ```
 
-网页端当前会出现人工确认弹窗；手机端实测可以正常走通。若用户取消确认，Listener 会调用 `resonance_bridge_dismissed`，事件进入 terminal 状态，不会反复复活。
+网页端当前会出现人工确认弹窗；手机端实测可以正常走通。若用户取消确认，Listener 会调用 `ncm_resonance_dismissed`，事件进入 terminal 状态，不会反复复活。
 
 ### Long-wait MCP
 
@@ -402,7 +402,7 @@ ChatGPT 当前对话
 网易云
   ↓ NIM realtime
 Bridge Queue
-  ↓ resonance_bridge_wait 返回
+  ↓ ncm_resonance_wait 返回
 ChatGPT 当前模型 turn
   ↓ ACK / reply
 继续下一轮 wait
@@ -413,14 +413,14 @@ ChatGPT 当前模型 turn
 如果该事件需要回复，模型应调用：
 
 ```text
-resonance_bridge_reply
+ncm_resonance_reply
 ```
 
 然后：
 
 ```text
 ChatGPT
-  ↓ resonance_bridge_reply
+  ↓ ncm_resonance_reply
 Bridge
   ↓ NIM ChatRoom send
 网易云
@@ -448,7 +448,7 @@ Widget 记住已经真正通过 `ui/message` 投递过的 eventId。
 
 ```text
 ui/message 已成功
-但 resonance_bridge_delivered ACK 失败
+但 ncm_resonance_delivered ACK 失败
 ```
 
 Widget 只会重试 ACK，不会再次把同一句显示给模型。
@@ -546,7 +546,7 @@ SSE → 直接把完整聊天消息塞进 Widget
 ```text
 SSE wake
   ↓
-resonance_bridge_sync
+ncm_resonance_sync
   ↓
 Queue reserve
 ```
@@ -630,7 +630,7 @@ npm run build
 先看：
 
 ```bash
-journalctl -u resonance-bridge -f
+journalctl -u ncm-resonance -f
 ```
 
 正常连接应出现类似：

@@ -23,7 +23,7 @@ test("a pre-rename database keeps pending content and acknowledged reply progres
   queue = new SqliteEventQueue(path); t.after(() => queue.close());
   const pending = queue.getOutstandingRequiredReplyEvent()!;
   assert.equal(pending.visibleText, event.visibleText);
-  assert.equal(pending.modelContext, "Resonance Bridge: use resonance_bridge_reply for eventId=existing");
+  assert.equal(pending.modelContext, "NCM Resonance: use ncm_resonance_reply for eventId=existing");
   assert.deepEqual(queue.claimReply(event.id, "original-fingerprint"), { state: "send", sentCount: 1 });
   assert.deepEqual(queue.getReply(event.id)?.messages, ["original reply", "remaining reply"]);
 });
@@ -31,8 +31,10 @@ test("a pre-rename database keeps pending content and acknowledged reply progres
 test("the renamed widget merges old local terminal records before listening", () => {
   const storage = new Map([
     ["cove-bridge-dispatched-v1", '["old-event"]'],
-    ["resonance-bridge-dispatched-v1", '["new-event"]'],
+    ["resonance-bridge-dispatched-v1", '["middle-event"]'],
+    ["ncm-resonance-dispatched-v1", '["new-event"]'],
     ["cove-bridge-pending-acks-v1", '["old-ack"]'],
+    ["resonance-bridge-pending-acks-v1", '["middle-ack"]'],
     ["cove-bridge-pending-dismissals-v1", '["old-dismissal"]'],
   ]);
   const script = buildListenerHtml().match(/<script>([\s\S]*?)<\/script>/)![1];
@@ -42,8 +44,9 @@ test("the renamed widget merges old local terminal records before listening", ()
     document: { getElementById: () => ({ addEventListener() {} }) },
     window: { parent: { postMessage() {} }, addEventListener() {}, setTimeout() {} },
   });
-  assert.deepEqual(JSON.parse(storage.get("resonance-bridge-dispatched-v1")!), ["new-event", "old-event"]);
-  assert.deepEqual(JSON.parse(storage.get("resonance-bridge-pending-acks-v1")!), ["old-ack"]);
-  assert.deepEqual(JSON.parse(storage.get("resonance-bridge-pending-dismissals-v1")!), ["old-dismissal"]);
+  assert.deepEqual(JSON.parse(storage.get("ncm-resonance-dispatched-v1")!), ["new-event", "middle-event", "old-event"]);
+  assert.deepEqual(JSON.parse(storage.get("ncm-resonance-pending-acks-v1")!), ["middle-ack", "old-ack"]);
+  assert.deepEqual(JSON.parse(storage.get("ncm-resonance-pending-dismissals-v1")!), ["old-dismissal"]);
   assert.equal(storage.has("cove-bridge-dispatched-v1"), false);
+  assert.equal(storage.has("resonance-bridge-dispatched-v1"), false);
 });

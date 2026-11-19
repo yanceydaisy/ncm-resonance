@@ -75,13 +75,13 @@ test("widget is idle by default and initializes MCP Apps bridge", () => {
   assert.match(html, /ui\/notifications\/initialized/);
   assert.match(html, /ui\/update-model-context/);
   assert.match(html, /ui\/message/);
-  assert.match(html, /resonance_bridge_listener_session/);
+  assert.match(html, /ncm_resonance_listener_session/);
   assert.match(html, /new EventSource\(streamUrl\.toString\(\)\)/);
   assert.match(html, /FALLBACK_POLL_MS = 60000/);
-  assert.match(html, /resonance-bridge-dispatched-v1/);
-  assert.match(html, /resonance-bridge-pending-dismissals-v1/);
+  assert.match(html, /ncm-resonance-dispatched-v1/);
+  assert.match(html, /ncm-resonance-pending-dismissals-v1/);
   assert.match(html, /requestHumanDecision\('ui\/message'/);
-  assert.match(html, /resonance_bridge_dismissed/);
+  assert.match(html, /ncm_resonance_dismissed/);
   assert.doesNotMatch(html, /await request\('ui\/message'/);
   assert.match(html, /不会重复显示/);
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];

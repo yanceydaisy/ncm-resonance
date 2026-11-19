@@ -1,4 +1,4 @@
-# AGENTS.md — Resonance Bridge
+# AGENTS.md — NCM Resonance
 
 This file is intentionally machine-oriented.
 
@@ -6,13 +6,13 @@ If you are an AI coding agent, read this before changing the project.
 
 ## Project goal
 
-Resonance Bridge bridges external realtime applications into an official AI client conversation without moving the model into a custom frontend.
+NCM Resonance bridges external realtime applications into an official AI client conversation without moving the model into a custom frontend.
 
 Default reference adapter:
 
 ```text
 NetEase Listen Together ChatRoom
-⇄ Resonance Bridge
+⇄ NCM Resonance
 ⇄ MCP Apps Listener
 ⇄ ChatGPT
 ```
@@ -51,13 +51,13 @@ Do not violate these without an explicit design decision.
 5. State events use latest-state-wins per `stateKey`.
 6. Required routed replies create backpressure until reply completion.
 7. Once `ui/message` has been handed to the host, failures must not blindly release and redispatch the event.
-8. If a human-confirmed host dismisses `ui/message`, mark the event terminal with `resonance_bridge_dismissed`; do not resurrect it and do not leave required-reply backpressure locked.
+8. If a human-confirmed host dismisses `ui/message`, mark the event terminal with `ncm_resonance_dismissed`; do not resurrect it and do not leave required-reply backpressure locked.
 9. Ingress adapters deduplicate on provider message identity.
 10. Reply delivery is idempotent through fingerprint + `sentCount` + completion state.
 11. `replyRoute` belongs to the event. The model must not invent a route.
 12. A playback control is not successful merely because an HTTP report returned successfully; wait for authoritative realtime or playlist confirmation.
 13. Widget Listener and Long-wait MCP are alternative consumers of the same Queue. Do not run them concurrently.
-14. Long-wait events use `resonance_bridge_wait_ack`; Widget delivery keeps the app-only delivered path. Do not merge the two ACK responsibilities.
+14. Long-wait events use `ncm_resonance_wait_ack`; Widget delivery keeps the app-only delivered path. Do not merge the two ACK responsibilities.
 
 ## Layer boundaries
 
@@ -132,7 +132,7 @@ Do not rewrite roadmap items as completed features.
 
 ## Change discipline
 
-0.5.0 publishes neutral project, widget and tool names. `src/legacyNames.ts` accepts older protocol names without listing them. Preserve legacy queue-context normalization, widget local-storage migration and Codex history-marker recovery. Do not rewrite stored human messages, saved reply text, receipt fingerprints or existing data-directory bindings during a rename.
+0.6.0 publishes NCM Resonance project, widget and tool names. `src/legacyNames.ts` accepts both older protocol generations without listing them. Preserve legacy queue-context normalization, widget local-storage migration and Codex history-marker recovery. Do not rewrite stored human messages, saved reply text, receipt fingerprints or existing data-directory bindings during a rename.
 
 Before coding:
 

@@ -204,7 +204,7 @@ export class SqliteEventQueue {
       if (reply.completed) return { state: "already_completed", sentCount: reply.sentCount };
       if (reply.fingerprint !== fingerprint) throw new Error(`Event already has a different reply: ${eventId}`);
       if (reply.inFlight && reply.owner === PROCESS_OWNER) return { state: "in_progress", sentCount: reply.sentCount };
-      if (reply.sendingIndex !== undefined) throw new Error(`Reply delivery is uncertain; verify the last bubble and use resonance_bridge_recover_reply: ${eventId}`);
+      if (reply.sendingIndex !== undefined) throw new Error(`Reply delivery is uncertain; verify the last bubble and use ncm_resonance_recover_reply: ${eventId}`);
       reply.inFlight = true;
       reply.owner = PROCESS_OWNER;
       this.saveReply(eventId, reply);

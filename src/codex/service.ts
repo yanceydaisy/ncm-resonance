@@ -142,7 +142,7 @@ export class CodexService {
   }
 
   private async generate(event: BridgeEvent, job: CodexJob): Promise<void> {
-    const marker = "RESONANCE_BRIDGE_EVENT " + event.id + " ATTEMPT " + job.attempt;
+    const marker = "NCM_RESONANCE_EVENT " + event.id + " ATTEMPT " + job.attempt;
     if (job.startedAt !== null) {
       if (!job.threadId) throw new Error("Interrupted Codex job has no thread binding");
       const recovered = await this.runtime.recover(job.threadId, marker, job.turnId);

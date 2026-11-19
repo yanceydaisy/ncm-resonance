@@ -1,20 +1,25 @@
-# Resonance Bridge
+# NCM Resonance
 
-> **0.5.0 — 统一中性命名，2026-11-19**
+> **0.6.0 — NCM Resonance｜网易云共振，2026-11-20**
 >
 > 不搬 AI，给 AI 修路。
 
-Resonance Bridge 连接外部应用与官方 ChatGPT 客户端或 Codex 运行时，用 Bridge 接通外部事件、实时状态和回复。用户可以继续留在原本的应用里。
+**NCM Resonance（网易云共振）** 是面向 NetEase Cloud Music「一起听」的 ChatGPT / Codex 桥接项目。它接通聊天室消息、播放状态、歌词、音乐控制和沿原房间返回的回复。
 
 首个适配器支持网易云「一起听」：听见聊天室消息、知道正在播什么、读歌词、控制播放，再把回复沿原路送回去。
 
-## 0.5.0 更新
+## 0.6.0 更新
 
-项目与桥接核心统一命名为 **Resonance Bridge（共振桥）**。官端 Listener、Codex 后端、npm 包、部署示例与工具说明都使用中性名称。
+项目正式命名为 **NCM Resonance（网易云共振）**，保留原名的 Resonance，并用 NCM 明确指向 NetEase Cloud Music。官端 Listener、Codex 后端、npm 包、部署示例与工具说明已统一。
 
-新的桥接工具前缀为 `resonance_bridge_`，官端打开工具为 `open_resonance_bridge`。网易云工具使用当前连接的账号，不预设助手姓名或身份。
+新的桥接工具前缀为 `ncm_resonance_`，官端打开工具为 `open_ncm_resonance`。网易云工具使用当前连接的账号，不预设助手姓名或身份。
 
 服务仍接受旧版客户端的工具调用与 Widget 资源请求，公开发现接口只展示新名称。旧版队列上下文、Listener 本地确认记录与 Codex 轮次标记均保留升级兼容。升级继续使用原来的数据库、Docker 数据卷和 Codex 数据目录即可，详见 [升级说明](docs/UPGRADING.zh-CN.md)。
+
+## 0.5.0 更新
+
+- 移除项目和网易云工具中的私人助手命名。
+- 建立工具、Widget、本地确认记录与 Codex 历史标记的改名兼容层。
 
 ## 0.4.0 更新
 
@@ -126,8 +131,8 @@ V2 有两种正式监听方式，**二选一，不要同时开启**：
 **[docs/ARCHITECTURE_FOR_AGENTS.zh-CN.md](docs/ARCHITECTURE_FOR_AGENTS.zh-CN.md)**
 
 ```bash
-git clone https://github.com/yanceydaisy/resonance-bridge.git
-cd resonance-bridge
+git clone https://github.com/yanceydaisy/ncm-resonance.git
+cd ncm-resonance
 
 cp .env.example .env
 npm install

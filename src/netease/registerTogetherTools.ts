@@ -293,7 +293,7 @@ export function registerNeteaseTogetherTools(
     "netease_together_send_message",
     {
       title: "Send NetEase Together room message",
-      description: "Send one ordinary text message from the connected NetEase account to the currently connected Listen Together ChatRoom. This is primarily for manual/proactive sends. If a required Resonance Bridge reply is currently outstanding, the Bridge will automatically bind this send to that event and complete its reply route so the listener cannot deadlock.",
+      description: "Send one ordinary text message from the connected NetEase account to the currently connected Listen Together ChatRoom. This is primarily for manual/proactive sends. If a required NCM Resonance reply is currently outstanding, the Bridge will automatically bind this send to that event and complete its reply route so the listener cannot deadlock.",
       inputSchema: { text: z.string().trim().min(1).max(500) },
       outputSchema: {
         ok: z.literal(true),
@@ -359,7 +359,7 @@ export function registerNeteaseTogetherTools(
         queue.markReplyCompleted(outstanding.id, fingerprint);
         listenerWakeHub.wake("reply-completed");
         console.warn(
-          `Resonance Bridge compatibility route completed via netease_together_send_message: eventId=${outstanding.id} messages=${bubbles.length}`,
+          `NCM Resonance compatibility route completed via netease_together_send_message: eventId=${outstanding.id} messages=${bubbles.length}`,
         );
         return {
           structuredContent: result,

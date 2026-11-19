@@ -58,8 +58,8 @@ test("legacy /mcp and scoped /mcp/music both initialize", async () => {
   await withServer(async (base) => {
     const legacy = await rpc(base, "/mcp", 1, "initialize");
     const music = await rpc(base, "/mcp/music", 2, "initialize");
-    assert.equal(legacy.result?.serverInfo?.name, "resonance-bridge");
-    assert.equal(music.result?.serverInfo?.name, "resonance-bridge-music");
+    assert.equal(legacy.result?.serverInfo?.name, "ncm-resonance");
+    assert.equal(music.result?.serverInfo?.name, "ncm-resonance-music");
   });
 });
 
@@ -74,15 +74,15 @@ test("legacy and scoped endpoints both keep the Music V2 tool surface", async ()
     "netease_together_next",
     "netease_together_enqueue_next",
     "netease_together_send_message",
-    "open_resonance_bridge",
-    "resonance_bridge_listener_session",
-    "resonance_bridge_reply",
-    "resonance_bridge_sync",
-    "resonance_bridge_delivered",
-    "resonance_bridge_dismissed",
-    "resonance_bridge_release",
-    "resonance_bridge_wait",
-    "resonance_bridge_wait_ack",
+    "open_ncm_resonance",
+    "ncm_resonance_listener_session",
+    "ncm_resonance_reply",
+    "ncm_resonance_sync",
+    "ncm_resonance_delivered",
+    "ncm_resonance_dismissed",
+    "ncm_resonance_release",
+    "ncm_resonance_wait",
+    "ncm_resonance_wait_ack",
   ];
   await withServer(async (base) => {
     for (const path of ["/mcp", "/mcp/music"]) {
@@ -98,7 +98,7 @@ test("widget discovery advertises the neutral resource URI", async () => {
     for (const path of ["/mcp", "/mcp/music"]) {
       const body = await rpc(base, path, 4, "resources/list");
       const uris = new Set((body.result?.resources ?? []).map((resource) => resource.uri));
-      assert.equal(uris.has("ui://widget/resonance-bridge.html"), true, path);
+      assert.equal(uris.has("ui://widget/ncm-resonance.html"), true, path);
     }
   });
 });
@@ -107,14 +107,20 @@ test("discovery is neutral while already-mounted clients can use legacy calls", 
   await withServer(async base => {
     for (const path of ["/mcp", "/mcp/music"]) {
       const listed = await rpc(base, path, 5, "tools/list");
-      assert.doesNotMatch(JSON.stringify(listed.result?.tools), /\bcove\b|cove_/i);
+      assert.doesNotMatch(JSON.stringify(listed.result?.tools), /\bcove\b|cove_|Resonance Bridge|resonance_bridge/i);
       const opened = await rpc(base, path, 6, "tools/call", { name: "open_cove_bridge", arguments: {} });
       assert.equal(opened.result?.structuredContent?.ready, true);
       const oldSync = await rpc(base, path, 7, "tools/call", { name: "cove_bridge_sync", arguments: {} });
       assert.ok(oldSync.result);
       const resource = await rpc(base, path, 8, "resources/read", { uri: "ui://widget/cove-bridge.html" });
-      assert.equal(resource.result?.contents?.[0]?.uri, "ui://widget/resonance-bridge.html");
-      assert.match(resource.result?.contents?.[0]?.text ?? "", /<title>Resonance Bridge<\/title>/);
+      assert.equal(resource.result?.contents?.[0]?.uri, "ui://widget/ncm-resonance.html");
+      assert.match(resource.result?.contents?.[0]?.text ?? "", /<title>NCM Resonance<\/title>/);
+      const intermediateOpen = await rpc(base, path, 9, "tools/call", { name: "open_resonance_bridge", arguments: {} });
+      assert.equal(intermediateOpen.result?.structuredContent?.ready, true);
+      const intermediateSync = await rpc(base, path, 10, "tools/call", { name: "resonance_bridge_sync", arguments: {} });
+      assert.ok(intermediateSync.result);
+      const intermediateResource = await rpc(base, path, 11, "resources/read", { uri: "ui://widget/resonance-bridge.html" });
+      assert.equal(intermediateResource.result?.contents?.[0]?.uri, "ui://widget/ncm-resonance.html");
     }
   });
 });
