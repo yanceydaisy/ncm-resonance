@@ -1,171 +1,93 @@
-# NCM Resonance
+# NCM Resonance｜网易云共振
 
-> **2.1.0 — NCM Resonance｜网易云共振，2026-11-20**
->
+把 ChatGPT 或 Codex 接进网易云音乐「一起听」。在网易云聊天室里说一句「下一首想听郭顶的《水星记》」，AI 就能搜索歌曲、把它排到下一首，再回到聊天室告诉你排好了。你切歌或暂停时，它也能收到播放状态，结合当前进度和可用歌词接着聊。
+
 > 不搬 AI，给 AI 修路。
 
-**NCM Resonance（网易云共振）** 是面向 NetEase Cloud Music「一起听」的 ChatGPT / Codex 桥接项目。它接通聊天室消息、播放状态、歌词、音乐控制和沿原房间返回的回复。
+[查看 v2.1.0 Release](https://github.com/yanceydaisy/ncm-resonance/releases/tag/v2.1.0) · [更新日志](#更新日志)
 
-首个适配器支持网易云「一起听」：听见聊天室消息、知道正在播什么、读歌词、控制播放，再把回复沿原路送回去。
+## 选官端还是 Codex？
 
-## 2.1.0 更新
+同一套桥接服务提供两种运行模式。网易云账号、音乐工具和 SQLite 队列的用法相同；区别在于**谁接收房间事件、在哪里生成回复**。每个运行实例通过 `BRIDGE_AI_BACKEND` 选择一种模式。
 
-项目正式命名为 **NCM Resonance（网易云共振）**，保留原名的 Resonance，并用 NCM 明确指向 NetEase Cloud Music。官端 Listener、Codex 后端、npm 包、部署示例与工具说明已统一。
+| | ChatGPT 官端（默认） | Codex 版 |
+| --- | --- | --- |
+| 回复在哪里生成 | 你选定的 ChatGPT 对话 | 运行服务的机器上，由 Bridge 调用官方 `codex app-server` |
+| 怎么开始 | 在 ChatGPT 接入 MCP，再开启 Long-wait 或 Widget | 在服务机器上登录 Codex CLI，启动 Bridge；收到房间消息后自动处理 |
+| 会话如何延续 | 由正在监听的 ChatGPT 对话承接 | 按网易云账号和聊天对象绑定 Codex thread，同一对听友换房后可接着聊 |
+| 适合谁 | 想在 ChatGPT 网页、桌面或手机端使用的人 | 想直接在网易云里聊天、让服务自动接歌和回消息的人 |
 
-新的桥接工具前缀为 `ncm_resonance_`，官端打开工具为 `open_ncm_resonance`。网易云工具使用当前连接的账号，不预设助手姓名或身份。
+## 两版都能做什么
 
-服务仍接受旧版客户端的工具调用与 Widget 资源请求，公开发现接口只展示新名称。旧版队列上下文、Listener 本地确认记录与 Codex 轮次标记均保留升级兼容。升级继续使用原来的数据库、Docker 数据卷和 Codex 数据目录即可，详见 [升级说明](docs/UPGRADING.zh-CN.md)。
-
-## 0.5.0 更新
-
-- 移除项目和网易云工具中的私人助手命名。
-- 建立工具、Widget、本地确认记录与 Codex 历史标记的改名兼容层。
-
-## 0.4.0 更新
-
-新增可独立部署的 Codex 后端，直接连接 `codex app-server`。
-
-- 网易云文字消息自动触发 Codex，最终回复沿原房间回传。
-- 以账号与聊天对象绑定持久 thread，重新开一起听房间后延续同一会话。
-- 切歌、暂停和继续播放触发状态唤醒。快速变化合并，人类消息优先，状态反应可以选择安静陪听。
-- 复用网易云 MCP 工具与 SQLite 逐气泡回执，保存生成结果并恢复发送进度。
-- 原生轮次中断后查询历史，找回已经完成的结果。无法确认的轮次需要显式重试。
-- 提供状态、失败任务重试与发送回执恢复入口。
-
-| `BRIDGE_AI_BACKEND` | 处理方式 |
-| --- | --- |
-| `chatgpt` | 默认模式，由官端 Widget 或 Long-wait 消费事件 |
-| `codex` | Bridge 自动调度本机 Codex App Server |
-
-部署步骤、登录、配置与验证范围见 [Codex 后端说明](docs/CODEX.zh-CN.md)。
-
-## 0.3.0 更新
-
-- 默认使用 SQLite 保存事件、投递确认、回复正文、逐气泡回执与去重记录。
-- 重启后恢复待处理消息与回复进度，Long-wait 可以继续处理原事件。
-- 发送前写入日志，收到 NIM 回执后提交进度。回执不确定时保留现场，核实后继续。
-- 网易云消息使用稳定事件 ID，重连重放与重启后的重复消息都会经过持久化去重。
-- 回复绑定原一起听房间，发送前校验目标。
-- 同步连接停止、重启、旧异步回调过滤与 native runtime 清理修复。
-
-部署需要 Node.js 22.16 或更新的 22.x。数据库默认保存在 `./data/bridge.sqlite`，可通过 `BRIDGE_DB_PATH` 配置。Docker 部署需要挂载数据目录。
-
-升级与恢复操作见 [持久化说明](docs/PERSISTENCE.zh-CN.md)。
-
-## V2 更新
-
-这里的 V2 是相对最初公开版本 **`v1-public-preview`** 而言。
-
-这一版主要完成了：
-
-- **实时播放状态升级为主链路**：暂停、继续、切歌和播放进度优先由网易云实时消息驱动，HTTP 只负责房间状态、低频校准和断线兜底；
-- 新增 **暂停、继续播放、切到指定歌曲、播放下一首、把歌曲插到下一首** 等一起听控制；
-- 控制不会“请求发出去就算成功”，而是等待网易云实时回执；修改播放队列后也会重新读取一次，确认真的生效；
-- **修复假切歌**：切到指定歌曲前先确认它确实在当前一起听队列里，避免出现“系统说切了，但手机其实没切”的情况；
-- 新增独立 **`/mcp/music`** profile，同时保留 `/mcp` 兼容；
-- 加固 Widget / Host 人工确认与事件终态处理；
-- 新增并真实验收 **Long-wait MCP Listener**：`wait → ACK → reply → next wait`；
-- 新增 **可靠退出一起听**：发出退出后再次确认房间状态，确保真的已经离开；
-- 公开候选版 **78/78 tests passed，TypeScript build passed**。
-
-完整 V2 变化、验收记录和 Roadmap：
-
-**[docs/V2.zh-CN.md](docs/V2.zh-CN.md)**
-
-Listener / Long-wait 的技术细节：
-
-**[docs/ARCHITECTURE_FOR_AGENTS.zh-CN.md](docs/ARCHITECTURE_FOR_AGENTS.zh-CN.md)**
-
-## 已实现
-
-### Bridge
-
-- Conversation / State 事件；
-- Queue、reserve / release / ACK；
-- required reply backpressure；
-- routed reply、去重；
-- poll / SSE / Widget / Long-wait Listener。
-
-### 网易云一起听
-
-- 邀请识别与自动接受；
-- 自动进入房间，并能可靠退出一起听；
-- ChatRoom 双向聊天；
-- 实时感知暂停、继续、切歌和播放进度；
-- 可以暂停、继续播放、切到指定歌曲、播放下一首、把歌曲插到下一首；
-- 播放控制会等待网易云实时回执确认；
-- 切歌前检查目标歌曲是否真的在当前队列里，避免假成功；
-- 整首歌词 + 当前歌词上下文。
-
-### 网易云账号
-
-- 搜索歌曲；
-- 歌单查看 / 创建 / 增删歌曲；
-- 喜欢 / 取消喜欢；
-- 听歌历史；
-- 每日推荐；
-- 账号基本信息。
-
-### MCP
-
-```text
-/mcp
-/mcp/music
-```
-
-公开版范围是 **Bridge + NetEase + default/music profiles**。
+- **一起听与聊天**：识别并接受邀请、进入房间、收发聊天室文字。回复绑定发出消息的房间，退出后会再次核实房间状态。
+- **同步播放与歌词**：从网易云实时消息获取曲目、进度、暂停和继续状态，HTTP 用于校准和断线兜底。模型可读取可用的整首歌词及当前位置附近的歌词，音乐上下文来自元数据和歌词。
+- **控制播放与队列**：暂停、继续、下一首、切到队内指定歌曲，或把歌曲插到下一首。播放操作等待实时状态确认；插歌后重新读取队列核对位置。
+- **网易云账号工具**：搜索歌曲、查看和编辑歌单、喜欢或取消喜欢、查询听歌历史和每日推荐。
 
 ## 部署
 
-V2 有两种正式监听方式，**二选一，不要同时开启**：
-
-- **Widget Listener**：手机端可用；网页端实测会出现人工确认；桌面端当前不可用；
-- **Long-wait MCP**：网页 / 桌面 / 手机均已实测可用，当前更适合多端使用。
-
-完整教程：
-
-**[docs/GETTING_STARTED.zh-CN.md](docs/GETTING_STARTED.zh-CN.md)**
-
-架构与实现说明：
-
-**[docs/ARCHITECTURE_FOR_AGENTS.zh-CN.md](docs/ARCHITECTURE_FOR_AGENTS.zh-CN.md)**
+使用 **Node.js 22.16 或更高的 22.x 版本**。下面的准备步骤两版通用。Docker 部署可直接参考对应模式的教程。
 
 ```bash
 git clone https://github.com/yanceydaisy/ncm-resonance.git
 cd ncm-resonance
-
 cp .env.example .env
-npm install
-npm test
+chmod 600 .env
+npm ci
 npm run build
 ```
 
-## 下一步
+在 `.env` 中填入用于一起听的 `NETEASE_COOKIE`（含 `MUSIC_U`），保留 `TOGETHER_ENABLED=true`，并将 `BRIDGE_INGEST_TOKEN` 的示例值换成长随机值。只接受指定账号的邀请时，填入对方的 `NETEASE_INVITER_UID`。Cookie、登录配置和包含聊天内容的数据库都应保存在部署者自己的机器上。
 
-当前可继续完善 Listener watchdog、多 Listener ownership、可观测性与部署体验。
+### ChatGPT 官端
 
-历史 V2 路线图保存在 [V2 文档](docs/V2.zh-CN.md)，其中 SQLite 与回复日志已在 0.3.0 实现。
+1. 在 `.env` 设置 `BRIDGE_AI_BACKEND=chatgpt`，将 `BRIDGE_PUBLIC_ORIGIN` 填为 ChatGPT 能访问的 HTTPS 域名，例如 `https://bridge.example.com`。域名后不带 `/mcp`。
+2. 配好 HTTPS 反向代理，在仓库目录运行 `node --env-file=.env dist/src/server.js`。在 ChatGPT 的 MCP 连接设置中填入 `https://bridge.example.com/mcp/music`；已有的通用入口 `/mcp` 也可用。对外提供 MCP 时，应在部署层限制访问；上述 token 保护事件写入和 Codex 管理接口。
+3. 在目标对话中选择下列一种监听方式。同一个队列只运行一个监听器。
 
-## 安全
+| 监听方式 | 在 ChatGPT 里怎么用 | 使用边界 |
+| --- | --- | --- |
+| **Long-wait MCP** | 说「开始持续监听网易云一起听，有消息就在原房间回复」。模型调用 `ncm_resonance_wait`，收到事件后确认，并在需要时回传。 | 需要一个正在运行的模型轮次。单次最多等 45 秒，超时后可按用户要求继续等待。 |
+| **Widget Listener** | 请 ChatGPT 调用 `open_ncm_resonance` 打开组件，再点「开始监听」。 | 组件在挂载的对话中接收事件；投递行为取决于客户端。 |
 
-- 不要提交网易云 Cookie 或 `BRIDGE_INGEST_TOKEN`；
-- NIM credentials 不进入 Widget、模型上下文或日志；
-- 发布前继续跑 test、build、diff / secret check。
+项目在 **2026-09-28** 的实测中，Long-wait 在网页、桌面和 iOS 均可用；Widget 在 iOS 可用，网页投递需要人工确认，当时桌面端未能完成投递。详细配置见[官端部署教程](docs/GETTING_STARTED.zh-CN.md)。
 
-## Credits
+### Codex 版
 
-参考过：
+1. 用**运行 Bridge 的同一系统用户**安装并登录 Codex CLI。项目已验证的 CLI 版本为 `0.165.0`。
 
-- [wynsyl1014/mcp-app-message-bridge](https://github.com/wynsyl1014/mcp-app-message-bridge)
-- [wuxiandudang-hash/ncm-listen-together](https://github.com/wuxiandudang-hash/ncm-listen-together)
-- [WenXiaoWendy/galatea-garden-wake-bridge](https://github.com/WenXiaoWendy/galatea-garden-wake-bridge)
-- [Vael-KY/netease-music-mcp](https://github.com/Vael-KY/netease-music-mcp)
+   ```bash
+   npm install -g @openai/codex@0.165.0
+   codex login --device-auth
+   codex login status
+   ```
 
-## License
+2. 在 `.env` 设置 `BRIDGE_AI_BACKEND=codex`。`CODEX_MODEL` 留空时沿用 CLI 的模型配置；自定义指令可通过 `CODEX_INSTRUCTIONS_FILE` 指向本机文件。
+3. 在仓库目录运行 `node --env-file=.env dist/src/server.js`。进入一起听房间后，直接从网易云发一条文字。Bridge 会启动 Codex 轮次，保存最终回复，再逐条发回原房间。
 
-Licensed under the **MIT License**. See [LICENSE](LICENSE).
+Codex 自己消费队列，无需打开 ChatGPT 或启动 Listener。连续切歌会合并，人类文字优先；单纯的播放状态变化允许安静陪听。可用 `GET /codex/status` 检查任务阶段和具体错误。项目已用真实 CLI 验证工具调用、重启续接和历史结果找回；公开版与真实网易云房间的完整联调仍待部署验收。Docker 挂载、状态查询与恢复命令见 [Codex 部署说明](docs/CODEX.zh-CN.md)。
 
-> **不搬 AI，给 AI 修路。**
+## 数据与升级
 
-Maintained by [Yancey](https://github.com/yanceydaisy).
+两版默认都将事件、去重记录、回复正文和逐条发送回执写入 **SQLite**（`BRIDGE_DB_PATH`，默认 `./data/bridge.sqlite`）。运行用户需要对数据目录有写权限。回复中途重启时，已确认送达的部分保留进度；某条回执不确定时，先到网易云核实，再使用恢复工具记录结果。
+
+已有部署升级请沿用**原数据库路径和 Docker 数据卷**。Codex 版还需保留原生 Codex 数据目录（含登录配置和 thread 历史）。改名后服务兼容旧工具调用和 Widget 资源地址，官端刷新工具列表即可看到新名称。[升级说明](docs/UPGRADING.zh-CN.md) · [备份与回复恢复](docs/PERSISTENCE.zh-CN.md)
+
+## 更新日志
+
+按公开发布标签倒序整理。
+
+| 发布版本 | 主要变化 |
+| --- | --- |
+| [v2.1.0](https://github.com/yanceydaisy/ncm-resonance/releases/tag/v2.1.0) | 增加独立 Codex 后端、按聊天对象续接的 thread、播放状态自动处理；两版共用 SQLite 持久队列与逐条回复恢复。项目由「海湾共振」更名为「网易云共振」，公开桥接工具统一为 `ncm_resonance_` 前缀，兼容旧客户端与已有数据。 |
+| [v2.0.0](https://github.com/yanceydaisy/ncm-resonance/releases/tag/v2.0.0) | 网易云实时消息成为播放状态的主要来源；加入带确认的播放与插歌操作、退出房间复核、音乐专用 `/mcp/music` 入口，以及官端 Long-wait 监听。[V2 验收记录](docs/V2.zh-CN.md) |
+| [v1-public-preview](https://github.com/yanceydaisy/ncm-resonance/releases/tag/v1-public-preview) | 首次公开官端 Widget 链路：接受一起听邀请、双向聊天室、播放状态、歌词和账号工具。 |
+
+## 实现与致谢
+
+事件队列、监听确认与原房间回复的设计见[架构说明](docs/ARCHITECTURE_FOR_AGENTS.zh-CN.md)。
+
+本项目参考了 [mcp-app-message-bridge](https://github.com/wynsyl1014/mcp-app-message-bridge)、[ncm-listen-together](https://github.com/wuxiandudang-hash/ncm-listen-together)、[galatea-garden-wake-bridge](https://github.com/WenXiaoWendy/galatea-garden-wake-bridge) 和 [netease-music-mcp](https://github.com/Vael-KY/netease-music-mcp)。
+
+由 [Yancey](https://github.com/yanceydaisy) 维护，采用 [MIT License](LICENSE)。
 
