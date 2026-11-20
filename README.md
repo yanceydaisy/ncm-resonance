@@ -50,7 +50,7 @@ npm run build
 | **Long-wait MCP** | 说「开始持续监听网易云一起听，有消息就在原房间回复」。模型调用 `ncm_resonance_wait`，收到事件后确认，并在需要时回传。 | 需要一个正在运行的模型轮次。单次最多等 45 秒，超时后可按用户要求继续等待。 |
 | **Widget Listener** | 请 ChatGPT 调用 `open_ncm_resonance` 打开组件，再点「开始监听」。 | 组件在挂载的对话中接收事件；投递行为取决于客户端。 |
 
-项目实测，Widget Listener 和 Long-wait MCP 均可在 ChatGPT 网页端、桌面端和 iOS 端使用。详细配置见[官端部署教程](docs/GETTING_STARTED.zh-CN.md)。
+**2026-10-07 重新实测**时，Widget Listener 已完成外部消息唤醒 ChatGPT、生成回复并沿原路回传的完整闭环，先前反复出现的 `ui/message` 人工确认不再复现。后续实测中，Widget Listener 和 Long-wait MCP 均可在 ChatGPT 网页端、桌面端和 iOS 端使用。详细配置见[官端部署教程](docs/GETTING_STARTED.zh-CN.md)。
 
 ### Codex 版
 
